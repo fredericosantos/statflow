@@ -1,3 +1,4 @@
+`100% aislop; should provide a good overview still`
 # Statflow - MLflow Experiment Analysis Tool
 
 A comprehensive, modular Streamlit application for analyzing and visualizing MLflow experiment results with advanced parameter exploration, metrics comparison, and dataset analysis capabilities.
@@ -119,8 +120,8 @@ uv sync
 
 # Run the application
 uv run streamlit run src/statflow/Home.py
-```
 
+```
 ## Usage Notes
 
 1. **Navigation**: Use the Home page to navigate between analysis modes
@@ -142,15 +143,6 @@ The application follows a modular architecture with:
 - Type hints and documentation throughout
 - Polars DataFrames for efficient data processing
 - Atomic file structure with single responsibilities
-
-## Implementation Plans
-
-The project was developed through iterative implementation plans:
-- **plan_8.md**: Added Parameters and Metrics subpages
-- **plan_9.md**: Fixed gaps and migrated to Polars
-- **plan_10.md**: Completed remaining enhancements
-- **plan_11.md**: Final integration and polish
-- **plan_12.md**: Code quality improvements and future enhancements
 
 ## Contributing
 
