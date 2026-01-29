@@ -39,6 +39,23 @@ def main():
     st.title(":material/tune: Parameters")
     st.markdown("Explore and configure experiment parameters for analysis.")
 
+    # Help section
+    with st.expander("ℹ️ How to use this page", expanded=False):
+        st.markdown("""
+        **Parameters Page Help:**
+
+        1. **Parameter Distributions**: View histograms, box plots, and correlations of experiment parameters
+        2. **Advanced 3D Visualizations**: Use 3D scatter plots and radar charts for deeper parameter analysis
+        3. **Parameter Filters**: Narrow down your analysis by filtering parameter ranges
+        4. **Interactive Charts**: Zoom, pan, and select data points in all visualizations
+
+        **Tips:**
+        - Use the tabs to switch between different visualization types
+        - 3D plots require at least 3 numeric parameters
+        - Filters are applied in real-time to all visualizations
+        - Data is cached for 10 minutes to improve performance
+        """)
+
     # Check if experiments and datasets are selected
     if not st.session_state.get('selected_experiments'):
         st.warning("Please select experiments on the Home page first.")

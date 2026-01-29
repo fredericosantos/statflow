@@ -201,6 +201,7 @@ def get_dataset_info(datasets_path: str, dataset_name: str) -> Tuple[int, int]:
         return 0, 0
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_experiment_data(column_prefix: str, clean_prefix: bool = True) -> pl.DataFrame:
     """Fetch experiment data for selected experiments and datasets, extracting specific column types.
 

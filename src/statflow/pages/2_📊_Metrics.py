@@ -33,6 +33,23 @@ def main():
     st.title(":material/bar_chart: Metrics")
     st.markdown("Explore and select metrics for analysis.")
 
+    # Help section
+    with st.expander("ℹ️ How to use this page", expanded=False):
+        st.markdown("""
+        **Metrics Page Help:**
+
+        1. **Metrics Distributions**: View histograms, box plots, and correlations of performance metrics
+        2. **Advanced 3D Visualizations**: Use 3D scatter plots and radar charts for multi-metric analysis
+        3. **Experiment Comparison**: Compare metrics across different experiments
+        4. **Interactive Charts**: Zoom, pan, and select data points in all visualizations
+
+        **Tips:**
+        - Use the tabs to explore different aspects of your metrics
+        - 3D plots help visualize trade-offs between multiple objectives
+        - Correlation matrices show relationships between metrics
+        - Data is cached for 10 minutes to improve performance
+        """)
+
     # Check if experiments and datasets are selected
     if not st.session_state.get('selected_experiments'):
         st.warning("Please select experiments on the Home page first.")

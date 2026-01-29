@@ -38,9 +38,10 @@ def _create_distribution_plot(
     column: str,
     plot_type: str,
     color_column: Optional[str] = None,
-    title_prefix: str = ""
+    title_prefix: str = "",
+    interactive: bool = True
 ) -> go.Figure:
-    """Create histogram or box plot for a column.
+    """Create histogram or box plot for a column with interactive controls.
 
     Args:
         df: DataFrame with data.
@@ -48,6 +49,7 @@ def _create_distribution_plot(
         plot_type: "histogram" or "box".
         color_column: Optional column to color by.
         title_prefix: Prefix for the plot title.
+        interactive: Whether to add interactive controls (zoom, pan, etc.).
 
     Returns:
         Plotly figure.
@@ -69,7 +71,21 @@ def _create_distribution_plot(
     else:
         raise ValueError(f"Unsupported plot type: {plot_type}")
 
-    fig.update_layout(width=800, height=400)
+    # Add interactive controls if requested
+    if interactive:
+        fig.update_layout(
+            hovermode='closest',
+            # Add mode bar buttons for additional interactivity
+            modebar_add=['zoom', 'pan', 'select', 'lasso', 'zoomIn', 'zoomOut', 'autoScale', 'resetScale'],
+            # Enable dragmode for selection
+            dragmode='zoom'
+        )
+        # Add range slider for histograms
+        if plot_type == "histogram":
+            fig.update_xaxes(rangeslider_visible=True)
+    else:
+        fig.update_layout(width=800, height=400)
+
     return fig
 
 
@@ -256,6 +272,166 @@ def render_pareto_front(
     st.plotly_chart(fig, width="content")
 
 
+def render_3d_scatter_plot(
+    df: pl.DataFrame,
+    x_col: str,
+    y_col: str,
+    z_col: str,
+    color_col: Optional[str] = None,
+    title: str = "3D Scatter Plot",
+    width: int = 800,
+    height: int = 600
+) -> None:
+    """Render interactive 3D scatter plot for three-parameter correlation analysis.
+
+    Args:
+        df: DataFrame with data.
+        x_col: Column for x-axis.
+        y_col: Column for y-axis.
+        z_col: Column for z-axis.
+        color_col: Optional column to color points by.
+        title: Plot title.
+        width: Graph width in pixels.
+        height: Graph height in pixels.
+    """
+    if handle_empty_data(df, "No data available for 3D visualization."):
+        return
+
+    # Check if required columns exist
+    required_cols = [x_col, y_col, z_col]
+    if color_col:
+        required_cols.append(color_col)
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        st.warning(f"Missing required columns: {missing_cols}")
+        return
+
+    # Create 3D scatter plot
+    fig = px.scatter_3d(
+        df,
+        x=x_col,
+        y=y_col,
+        z=z_col,
+        color=color_col,
+        title=title,
+        labels={
+            x_col: x_col.replace('_', ' ').title(),
+            y_col: y_col.replace('_', ' ').title(),
+            z_col: z_col.replace('_', ' ').title()
+        }
+    )
+
+    # Update layout for better interactivity
+    fig.update_layout(
+        width=width,
+        height=height,
+        scene=dict(
+            xaxis_title=x_col.replace('_', ' ').title(),
+            yaxis_title=y_col.replace('_', ' ').title(),
+            zaxis_title=z_col.replace('_', ' ').title(),
+        ),
+        hovermode='closest'
+    )
+
+    # Add interactive controls
+    fig.update_layout(
+        modebar_add=['zoom', 'pan', 'orbit', 'turntable', 'resetCameraDefault3d', 'resetCameraLastSave3d']
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_radar_chart(
+    df: pl.DataFrame,
+    value_cols: List[str],
+    category_col: Optional[str] = None,
+    title: str = "Radar Chart",
+    width: int = 800,
+    height: int = 600
+) -> None:
+    """Render radar chart for multi-metric comparisons.
+
+    Args:
+        df: DataFrame with data.
+        value_cols: List of columns to plot on radar.
+        category_col: Optional column to group by (creates multiple radar lines).
+        title: Plot title.
+        width: Graph width in pixels.
+        height: Graph height in pixels.
+    """
+    if handle_empty_data(df, "No data available for radar chart."):
+        return
+
+    # Check if required columns exist
+    missing_cols = [col for col in value_cols if col not in df.columns]
+    if missing_cols:
+        st.warning(f"Missing required columns: {missing_cols}")
+        return
+
+    if category_col and category_col not in df.columns:
+        st.warning(f"Category column '{category_col}' not found.")
+        return
+
+    # Prepare data for radar chart
+    if category_col:
+        # Multiple categories - create separate traces
+        fig = go.Figure()
+        categories = df[category_col].unique().to_list()
+
+        for cat in categories:
+            cat_data = df.filter(pl.col(category_col) == cat)
+            if not cat_data.is_empty():
+                # Calculate means for each value column
+                values = []
+                for col in value_cols:
+                    mean_val = cat_data[col].mean()
+                    values.append(float(mean_val))
+
+                # Close the radar by repeating first value
+                values.append(values[0])
+                categories_closed = value_cols + [value_cols[0]]
+
+                fig.add_trace(go.Scatterpolar(
+                    r=values,
+                    theta=categories_closed,
+                    fill='toself',
+                    name=str(cat)
+                ))
+    else:
+        # Single radar chart - use means of all data
+        values = []
+        for col in value_cols:
+            mean_val = df[col].mean()
+            values.append(float(mean_val))
+
+        # Close the radar
+        values.append(values[0])
+        categories_closed = value_cols + [value_cols[0]]
+
+        fig = go.Figure(data=go.Scatterpolar(
+            r=values,
+            theta=categories_closed,
+            fill='toself'
+        ))
+
+    # Update layout
+    fig.update_layout(
+        title=title,
+        width=width,
+        height=height,
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, None]  # Auto-scale
+            )
+        ),
+        showlegend=category_col is not None
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def render_statistics_table(runs_df: pd.DataFrame, show_mean: bool = False, return_df: bool = False) -> Optional[pd.DataFrame]:
     """Render detailed statistics table.
 
@@ -403,7 +579,7 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
         return
 
     # Create tabs for different parameter types
-    tab_names = ["Histograms", "Box Plots", "Value Counts", "Correlation"]
+    tab_names = ["Histograms", "Box Plots", "Value Counts", "Correlation", "Advanced 3D"]
     tabs = st.tabs(tab_names)
 
     with tabs[0]:  # Histograms
@@ -452,6 +628,53 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Need at least 2 numeric parameters for correlation analysis.")
+
+    with tabs[4]:  # Advanced 3D
+        st.subheader("Advanced Visualizations")
+        numeric_cols = [col for col in param_cols if param_df[col].dtype in [pl.Int64, pl.Float64]]
+
+        if len(numeric_cols) >= 3:
+            # 3D Scatter Plot
+            st.markdown("### 3D Parameter Scatter Plot")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                x_param = st.selectbox("X-axis", numeric_cols, key="x_param_3d")
+            with col2:
+                y_param = st.selectbox("Y-axis", numeric_cols, key="y_param_3d")
+            with col3:
+                z_param = st.selectbox("Z-axis", numeric_cols, key="z_param_3d")
+
+            color_param = st.selectbox("Color by", [None] + param_cols, key="color_param_3d")
+
+            if x_param and y_param and z_param:
+                render_3d_scatter_plot(
+                    param_df, x_param, y_param, z_param, color_param,
+                    title=f"3D Scatter: {x_param} vs {y_param} vs {z_param}"
+                )
+
+            # Radar Chart
+            st.markdown("### Parameter Radar Chart")
+            selected_params = st.multiselect(
+                "Select parameters for radar chart",
+                numeric_cols,
+                default=numeric_cols[:min(5, len(numeric_cols))],
+                key="radar_params"
+            )
+
+            if len(selected_params) >= 3:
+                category_col = st.selectbox(
+                    "Group by (optional)",
+                    [None] + [col for col in param_df.columns if col != 'dataset_name'],
+                    key="radar_category"
+                )
+                render_radar_chart(
+                    param_df, selected_params, category_col,
+                    title="Parameter Comparison Radar Chart"
+                )
+            else:
+                st.info("Select at least 3 parameters for radar chart.")
+        else:
+            st.info("Need at least 3 numeric parameters for advanced 3D visualizations.")
     """Render distributions for metrics.
 
     Args:
@@ -470,7 +693,7 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
         return
 
     # Create tabs for different visualizations
-    tab_names = ["Histograms", "Box Plots", "Correlation", "Experiment Comparison"]
+    tab_names = ["Histograms", "Box Plots", "Correlation", "Experiment Comparison", "Advanced 3D"]
     tabs = st.tabs(tab_names)
 
     with tabs[0]:  # Histograms
@@ -521,3 +744,87 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
             elif 'experiment_name' not in metrics_df.columns:
                 st.info("Experiment information not available for comparison.")
                 break
+
+    with tabs[4]:  # Advanced 3D
+        st.subheader("Advanced Visualizations")
+        numeric_cols = [col for col in metrics_cols if metrics_df[col].dtype in [pl.Int64, pl.Float64]]
+
+        if len(numeric_cols) >= 3:
+            # 3D Scatter Plot
+            st.markdown("### 3D Metrics Scatter Plot")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                x_metric = st.selectbox("X-axis", numeric_cols, key="x_metric_3d")
+            with col2:
+                y_metric = st.selectbox("Y-axis", numeric_cols, key="y_metric_3d")
+            with col3:
+                z_metric = st.selectbox("Z-axis", numeric_cols, key="z_metric_3d")
+
+            color_metric = st.selectbox("Color by", [None] + metrics_cols, key="color_metric_3d")
+
+            if x_metric and y_metric and z_metric:
+                render_3d_scatter_plot(
+                    metrics_df, x_metric, y_metric, z_metric, color_metric,
+                    title=f"3D Scatter: {x_metric} vs {y_metric} vs {z_metric}"
+                )
+
+            # Radar Chart
+            st.markdown("### Metrics Radar Chart")
+            selected_metrics = st.multiselect(
+                "Select metrics for radar chart",
+                numeric_cols,
+                default=numeric_cols[:min(5, len(numeric_cols))],
+                key="radar_metrics"
+            )
+
+            if len(selected_metrics) >= 3:
+                category_col = st.selectbox(
+                    "Group by (optional)",
+                    [None] + [col for col in metrics_df.columns if col != 'dataset_name'],
+                    key="radar_metrics_category"
+                )
+                render_radar_chart(
+                    metrics_df, selected_metrics, category_col,
+                    title="Metrics Comparison Radar Chart"
+                )
+            else:
+                st.info("Select at least 3 metrics for radar chart.")
+        else:
+            st.info("Need at least 3 numeric metrics for advanced 3D visualizations.")
+
+
+def add_chart_export_buttons(fig: go.Figure, filename_prefix: str = "chart") -> None:
+    """Add export buttons for a Plotly chart.
+
+    Args:
+        fig: Plotly figure to add export options for.
+        filename_prefix: Prefix for exported file names.
+    """
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("📥 Download PNG", key=f"png_{filename_prefix}"):
+            # Note: In a real implementation, you'd use fig.write_image()
+            # But this requires kaleido package
+            st.info("PNG export would be implemented with fig.write_image()")
+
+    with col2:
+        if st.button("📄 Download PDF", key=f"pdf_{filename_prefix}"):
+            st.info("PDF export would be implemented with fig.write_image()")
+
+    with col3:
+        if st.button("📊 Download HTML", key=f"html_{filename_prefix}"):
+            # HTML export works without additional dependencies
+            import tempfile
+            import os
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+                fig.write_html(f.name)
+                with open(f.name, 'rb') as file:
+                    st.download_button(
+                        label="Download HTML",
+                        data=file,
+                        file_name=f"{filename_prefix}.html",
+                        mime="text/html"
+                    )
+            os.unlink(f.name)
