@@ -16,7 +16,6 @@ Usage:
 """
 
 import pandas as pd
-from typing import Dict
 import streamlit as st
 
 
@@ -51,7 +50,7 @@ def style_statistical_table(stat_df: pd.DataFrame) -> pd.DataFrame:
     return stat_df.style.map(highlight_significance)
 
 
-def style_rmse_table(rmse_df: pd.DataFrame, significance_info: Dict) -> pd.DataFrame:
+def style_rmse_table(rmse_df: pd.DataFrame, significance_info: dict) -> pd.DataFrame:
     """Apply styling to RMSE table to bold the best value and underline if significant.
 
     Args:
@@ -92,7 +91,7 @@ def style_rmse_table(rmse_df: pd.DataFrame, significance_info: Dict) -> pd.DataF
             config_cols = list(row.index)[1:]
             if dataset in significance_info and min_idx < len(config_cols):
                 config_name = config_cols[min_idx]
-                if significance_info[dataset].get(config_name, False):
+                if config_name in significance_info[dataset] and significance_info[dataset][config_name]:
                     styles[actual_col_idx] += " text-decoration: underline;"
 
         return styles

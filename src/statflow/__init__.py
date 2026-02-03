@@ -8,28 +8,33 @@ comparison, and dataset analysis.
 
 statflow/
 ├── __init__.py          # Package initialization and main structure
+├── app.py               # Main navigation launcher with page routing
 ├── config.py            # Constants, configuration management, and YAML persistence
-├── Home.py              # Main entry point with navigation overview
-├── pages/               # Individual analysis pages
-│   ├── 1_🔧_Parameters.py     # Parameter exploration and filtering
-│   ├── 2_📊_Metrics.py        # Metrics overview and selection
-│   ├── 3_🔬_Single_Dataset.py  # Single dataset analysis (boxplots, Pareto)
-│   ├── 4_📋_Multiple_Datasets.py # Multiple datasets comparison tables
-│   ├── 5_💾_Export.py          # Bulk export functionality
-│   └── 6_⚙️_Settings.py        # Advanced filtering and customization
-├── pages_modules/       # Business logic modules for each page
-│   ├── __init__.py      # Modules package initialization
-│   ├── module_1_Parameters/    # Parameter processing logic
-│   ├── module_2_Metrics/       # Metrics processing logic
-│   ├── module_3_Single_Dataset/ # Single dataset processing
-│   ├── module_4_Multiple_Datasets/ # Multiple datasets processing
-│   ├── module_5_Export/        # Export processing
-│   └── module_6_Settings/      # Settings processing
-├── utils/               # Utility modules for data processing and analysis
-│   ├── __init__.py      # Utils package initialization
-│   ├── mlflow_client.py # MLflow data fetching and client management
-│   ├── data_processing.py # Data transformation and labeling functions
-│   ├── table_builders/  # Table construction modules
+├── .streamlit/          # Streamlit configuration (fonts, themes)
+├── subpages/            # Individual analysis pages
+│   ├── get_started.py   # Main entry point with experiment/dataset setup
+│   ├── parameters.py    # Parameter exploration and filtering
+│   ├── metrics.py       # Metrics overview and selection
+│   ├── single_dataset.py # Single dataset analysis (boxplots, Pareto)
+│   ├── multiple_datasets.py # Multiple datasets comparison tables
+│   ├── export_data.py   # Bulk export functionality
+│   ├── plot_macros.py   # Advanced plotting and visualization
+│   └── settings.py      # Advanced filtering and customization
+├── components/         # Reusable UI components
+│   ├── __init__.py      # UI components package
+│   ├── downloads.py     # Download button and ZIP creation
+│   ├── filters.py       # Sidebar filter widgets
+│   ├── graphs.py        # Graph rendering and visualization
+│   └── tables.py        # Table display with downloads
+├── functional/          # Shared functional utilities
+│   ├── __init__.py      # Functional package
+│   ├── mlflow/          # MLflow client utilities
+│   ├── dataframes/      # Data processing (Polars operations)
+│   ├── export/          # Data export functions
+│   ├── table_builders/  # Table builder classes
+│   ├── visualization/   # Visualization helpers
+│   └── table_utils/     # Table utility functions
+├── pages_modules/       # Page-specific logic modules
 │   ├── visualization.py # Color and symbol assignment for plots
 │   ├── styling.py       # Table styling and UI utilities
 │   └── export.py        # Export functionality (ZIP, CSV, etc.)
@@ -41,5 +46,5 @@ statflow/
     └── downloads.py     # Download button components
 
 Usage:
-    uv run streamlit run statflow/Home.py
+    uv run streamlit run statflow/app.py
 """

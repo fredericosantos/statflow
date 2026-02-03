@@ -1,0 +1,9 @@
+[theme]
+font = "SF Mono"
+headingFont = "SF Mono"
+codeFont = "JetBrains Mono"
+
+[theme.sidebar]
+font = "SF Mono"
+headingFont = "SF Mono"
+codeFont = "JetBrains Mono"

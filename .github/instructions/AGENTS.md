@@ -3,12 +3,13 @@
 ## Technical Notes
 
 - **MLflow Tracking URI**: Always use `st.session_state['mlflow_server_url']` and call `mlflow.set_tracking_uri()` before any MLflow operations.
-- **Session State**: 
-    - `available_params`, `available_param_values`, and `available_metrics` are populated in `Home.py` upon experiment selection.
+- **Session State**:
+    - `available_params`, `available_param_values`, and `available_metrics` are populated in `experiment_selector.py` upon experiment selection.
     - These should be used instead of querying MLflow for schema/metadata.
-- **Modular Structure**:
-    - `pages/` should only contain Streamlit UI code.
-    - Business logic/complex processing should reside in `pages_modules/module_X/` (where X is the page name).
+## Modular Structure
+- `pages/` should only contain Streamlit UI code.
+- `functional/` contains shared functional code, organized into subfolders by functionality (e.g., `mlflow/`, `dataframes/`, `export/`, `visualization/`).
+- `pages_modules/module_X/` hosts page-specific logic and components to avoid overly nested structures, while keeping complex processing modular.
 - **Python Version**: Using Python 3.13. Use `Type | None` instead of `Optional[Type]`.
 - **Imports**: Ensure `__init__.py` files exist in all directories and contain package descriptions as per `env.instructions.md`.
 - **Error Handling**: Follow the project philosophy of removing `try/except` blocks that mask bugs, except for external network/IO operations.

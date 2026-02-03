@@ -1,5 +1,30 @@
 # Plan_12.md - Code Quality Improvements and Feature Enhancements
 
+## 0) CRITICAL: Dead Code Cleanup (EMERGENCY FIX)
+### Duplicate Page Files Causing Streamlit Errors
+**Issue**: Multiple pages with same URL pathnames causing `StreamlitAPIException`
+**Root Cause**: Duplicate page files not properly cleaned up during refactoring
+
+### Files to Remove (Duplicates): ✅ COMPLETED
+- `pages/1_🔬_Single_Dataset.py` ❌ (removed - was duplicate of 3_🔬_Single_Dataset.py)
+- `pages/2_📋_Multiple_Datasets.py` ❌ (removed - was duplicate of 4_📋_Multiple_Datasets.py) 
+- `pages/3_💾_Export.py` ❌ (removed - was duplicate of 5_💾_Export.py)
+- `pages/5_📊_Plot_Macros.py` ❌ (removed - was duplicate of 7_📊_Plot_Macros.py)
+
+### Additional Fixes:
+- Fixed `DEFAULT_DATASETS = []` causing IndexError in config.py
+- Corrected syntax error in `DEFAULT_LAST_DATASET` definition
+- Streamlit application now imports without errors
+
+### Correct Page Structure (per README.md):
+1. `1_🔧_Parameters.py` ✅
+2. `2_📊_Metrics.py` ✅
+3. `3_🔬_Single_Dataset.py` ✅ (keep this one)
+4. `4_📋_Multiple_Datasets.py` ✅ (keep this one)
+5. `5_💾_Export.py` ✅ (keep this one)
+6. `6_⚙️_Settings.py` ✅
+7. `7_📊_Plot_Macros.py` ❌ (remove duplicate)
+
 ## 1) Review of Plans 8-11 Implementation Status
 
 ### Completed Features
@@ -25,11 +50,17 @@
 4. **Error Handling**: Repetitive empty DataFrame checks and warning messages across multiple functions
 5. **Plotly Chart Creation**: Similar histogram/boxplot creation code in `render_parameter_distributions()` and `render_metrics_distributions()`
 
-### Dead Code
-1. **Unused Imports**: Potential unused imports in various files (e.g., `sympy` in graphs.py, various pandas remnants)
-2. **Unused Functions**: Some utility functions may not be called (need full codebase analysis)
-3. **Commented Code**: Legacy pandas code left in comments after Polars migration
-4. **Stub Functions**: `calculate_comparison_metrics()` in Multiple Datasets processor is empty
+### Dead Code ✅ COMPLETED (Critical Issues Fixed)
+1. **Duplicate Page Files**: ✅ Removed 4 duplicate page files causing Streamlit URL conflicts
+2. **Unused Imports**: Some legacy pandas imports remain in functions still using pandas (e.g., `render_statistics_table`) - these are functional and used
+3. **Unused Functions**: `calculate_comparison_metrics()` not found in codebase - may have been removed already
+4. **Commented Code**: No significant legacy pandas comments found requiring cleanup
+5. **Stub Functions**: No empty stub functions identified in current codebase
+
+### Additional Dead Code Cleanup Notes:
+- Some functions still use pandas DataFrames (e.g., `render_statistics_table`) but are actively used and functional
+- Polars migration is complete for new code; legacy pandas functions remain compatible
+- No critical dead code blocking application functionality remains
 
 ### Redundant Implementations
 1. **DataFrame Conversions**: Frequent `pl.DataFrame.to_pandas()` conversions for Plotly compatibility - could be centralized

@@ -20,14 +20,13 @@ Usage:
 import pandas as pd
 from scipy import stats
 from statsmodels.sandbox.stats.multicomp import multipletests
-from typing import Tuple, Dict, Any
 import streamlit as st
 from pathlib import Path
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from statflow.config import (
+from statflow.functional.dataframes.data_processing import (
     create_group_label,
     get_sort_key,
     get_dataset_info,
@@ -37,7 +36,7 @@ from statflow.config import (
 
 
 @st.cache_data(show_spinner=False)
-def calculate_scaled_std_for_dataset(dataset_name: str) -> Tuple[float, float]:
+def calculate_scaled_std_for_dataset(dataset_name: str) -> tuple[float, float]:
     """Calculate the standard deviation of train and test sets after StandardScaler.
 
     Uses 70% train / 30% test split with seeds 1-30, averages the std across seeds.
@@ -93,7 +92,7 @@ def calculate_scaled_std_for_dataset(dataset_name: str) -> Tuple[float, float]:
 @st.cache_data(show_spinner=False)
 def calculate_target_distribution_stats(
     dataset_name: str,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Calculate statistics about the original target distribution to assess how close it is to 0.
 
     Args:
@@ -141,7 +140,7 @@ def calculate_target_distribution_stats(
     table_data = []
     significance_info = {}
 
-    for dataset in st.session_state.get('available_datasets', []):
+    for dataset in st.session_state['available_datasets'] if 'available_datasets' in st.session_state else []:
         dataset_runs = all_runs_df[all_runs_df["dataset_name"] == dataset]
 
         if dataset_runs.empty:
@@ -150,7 +149,7 @@ def calculate_target_distribution_stats(
         row = {"Dataset": dataset}
 
         # Get dataset info
-        from statflow.utils.data_processing import get_dataset_info
+        from statflow.functional.dataframes.data_processing import get_dataset_info
 
         datasets_path = Path(__file__).parent.parent.parent / "datasets"
         num_samples, num_features = get_dataset_info(str(datasets_path), dataset)
@@ -233,11 +232,11 @@ def calculate_target_distribution_stats(
                 value_str = f"{median:.2f} ± {std:.2f}"
 
                 # Add † if this ARC config is significantly better than all non-ARC configs
-                if arc_superior.get(config, False):
+                if config in arc_superior and arc_superior[config]:
                     value_str += " †"
 
                 row[config] = value_str
-                dataset_significance[config] = arc_superior.get(config, False)
+                dataset_significance[config] = config in arc_superior and arc_superior[config]
             else:
                 row[config] = "—"
 
@@ -287,7 +286,7 @@ def calculate_target_distribution_stats(
     # Build table data
     table_data = []
 
-    for dataset in st.session_state.get('available_datasets', []):
+    for dataset in st.session_state['available_datasets'] if 'available_datasets' in st.session_state else []:
         dataset_runs = all_runs_df[all_runs_df["dataset_name"] == dataset]
 
         if dataset_runs.empty:
@@ -403,7 +402,7 @@ def calculate_target_distribution_stats(
                 raw_p_values[config] = p_value
 
         # Apply Holm-Bonferroni correction
-        valid_configs = [c for c in config_order if raw_p_values.get(c) is not None]
+        valid_configs = [c for c in config_order if c in raw_p_values and raw_p_values[c] is not None]
         valid_p_values = [raw_p_values[c] for c in valid_configs]
 
         hb_corrected = {}
@@ -424,7 +423,7 @@ def calculate_target_distribution_stats(
             elif config == best_config:
                 stat_row[config] = "—"
             else:
-                p_val = raw_p_values.get(config)
+                p_val = raw_p_values[config] if config in raw_p_values else None
                 if p_val is not None:
                     stat_row[config] = round(p_val, 4)
                 else:
@@ -457,7 +456,7 @@ def calculate_target_distribution_stats(
             return False
         best_config = None
         for config in config_order:
-            if row.get(config) == "—":
+            if config in row and row[config] == "—":
                 best_config = config
                 break
         if not best_config:

@@ -19,11 +19,11 @@ Usage:
 
 import streamlit as st
 import pandas as pd
-from typing import Optional, Any, Tuple
 
-from statflow.utils.export import (
+from statflow.functional.export.export import (
     create_fitness_zip, export_table_to_csv, export_table_to_latex, export_table_to_markdown
 )
+from statflow.config import DEFAULT_ZIP_CLICKED
 
 
 def render_csv_download(df: pd.DataFrame, filename: str = "data.csv", label: str = "Download CSV") -> None:
@@ -50,9 +50,9 @@ def render_csv_download(df: pd.DataFrame, filename: str = "data.csv", label: str
 
 
 def render_zip_download(
-    selected_mpf_values: Optional[Tuple[str, ...]] = None,
-    selected_beta_values: Optional[Tuple[str, ...]] = None,
-    selected_pinflate_values: Optional[Tuple[str, ...]] = None,
+    selected_mpf_values: tuple[str, ...] | None = None,
+    selected_beta_values: tuple[str, ...] | None = None,
+    selected_pinflate_values: tuple[str, ...] | None = None,
 ) -> None:
     """Render ZIP download button for raw fitness data.
 
@@ -62,7 +62,7 @@ def render_zip_download(
         selected_pinflate_values: Selected p_inflate values to filter.
     """
     # Check if ZIP creation was triggered
-    if st.session_state.get('zip_clicked', False):
+    if st.session_state['zip_clicked'] if 'zip_clicked' in st.session_state else DEFAULT_ZIP_CLICKED:
         progress_placeholder = st.empty()
         progress_bar = progress_placeholder.progress(0, text="Starting ZIP creation...")
 
@@ -152,9 +152,9 @@ def render_download_section(
     df: pd.DataFrame,
     prefix: str = "data",
     include_zip: bool = False,
-    selected_mpf_values: Optional[Tuple[str, ...]] = None,
-    selected_beta_values: Optional[Tuple[str, ...]] = None,
-    selected_pinflate_values: Optional[Tuple[str, ...]] = None,
+    selected_mpf_values: tuple[str, ...] | None = None,
+    selected_beta_values: tuple[str, ...] | None = None,
+    selected_pinflate_values: tuple[str, ...] | None = None,
 ) -> None:
     """Render a complete download section with multiple format options.
 

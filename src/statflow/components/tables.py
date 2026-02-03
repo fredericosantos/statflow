@@ -20,7 +20,7 @@ import pandas as pd
 import polars as pl
 from pandas.io.formats.style import Styler
 
-from statflow.utils.export import (
+from statflow.functional.export.export import (
     export_table_to_csv, export_table_to_latex, export_table_to_markdown
 )
 
@@ -56,7 +56,7 @@ def render_table_with_downloads(
     if not table_df.empty:
         # Get dataset renames from session state
         from statflow.config import DEFAULT_DATASET_RENAMES
-        dataset_renames = st.session_state.get('dataset_renames', DEFAULT_DATASET_RENAMES)
+        dataset_renames = st.session_state['dataset_renames'] if 'dataset_renames' in st.session_state else DEFAULT_DATASET_RENAMES
         
         # Generate LaTeX once for both download and copy
         latex_data = export_table_to_latex(

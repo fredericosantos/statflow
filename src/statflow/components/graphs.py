@@ -22,12 +22,12 @@ import polars as pl
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
-from typing import Optional, Dict, Any, List
+from typing import Any
 
-from statflow.utils.data_processing import (
+from statflow.functional.dataframes.data_processing import (
     create_group_label, get_sort_key, calculate_pareto_front, get_pareto_group_label
 )
-from statflow.utils.visualization import (
+from statflow.functional.visualization.visualization import (
     get_color_for_config, get_pareto_color, get_marker_symbol, get_default_color_mapping
 )
 from statflow.utils.styling import handle_empty_data
@@ -37,7 +37,7 @@ def _create_distribution_plot(
     df: pl.DataFrame,
     column: str,
     plot_type: str,
-    color_column: Optional[str] = None,
+    color_column: str | None = None,
     title_prefix: str = "",
     interactive: bool = True
 ) -> go.Figure:
@@ -94,7 +94,7 @@ def render_boxplot(
     show_mean: bool = False,
     points_display: Any = "outliers",
     use_custom_colors: bool = True,
-    custom_colors: Optional[Dict] = None,
+    custom_colors: dict[str, str] | None = None,
     width: int = 800,
     height: int = 600
 ) -> None:
@@ -146,7 +146,7 @@ def render_boxplot(
             fig.add_trace(go.Box(
                 y=config_data["metrics.best_test_fitness"],
                 name=config,
-                marker_color=color_map.get(config, "#808080"),
+                marker_color=color_map[config] if config in color_map else "#808080",
                 boxpoints=points_display,
                 jitter=0.3,
                 pointpos=0,
@@ -173,8 +173,8 @@ def render_pareto_front(
     runs_df: pd.DataFrame,
     show_error_bars: bool = True,
     use_custom_colors: bool = True,
-    custom_colors: Optional[Dict] = None,
-    custom_symbols: Optional[Dict] = None,
+    custom_colors: dict[str, str] | None = None,
+    custom_symbols: dict[str, str] | None = None,
     width: int = 800,
     height: int = 600
 ) -> None:
@@ -277,7 +277,7 @@ def render_3d_scatter_plot(
     x_col: str,
     y_col: str,
     z_col: str,
-    color_col: Optional[str] = None,
+    color_col: str | None = None,
     title: str = "3D Scatter Plot",
     width: int = 800,
     height: int = 600
@@ -344,8 +344,8 @@ def render_3d_scatter_plot(
 
 def render_radar_chart(
     df: pl.DataFrame,
-    value_cols: List[str],
-    category_col: Optional[str] = None,
+    value_cols: list[str],
+    category_col: str | None = None,
     title: str = "Radar Chart",
     width: int = 800,
     height: int = 600
@@ -432,7 +432,204 @@ def render_radar_chart(
     st.plotly_chart(fig, use_container_width=True)
 
 
-def render_statistics_table(runs_df: pd.DataFrame, show_mean: bool = False, return_df: bool = False) -> Optional[pd.DataFrame]:
+def render_animated_scatter_plot(
+    df: pl.DataFrame,
+    x_col: str,
+    y_col: str,
+    animation_col: str,
+    color_col: str | None = None,
+    title: str = "Animated Scatter Plot",
+    width: int = 800,
+    height: int = 600
+) -> None:
+    """Render animated scatter plot for time-series analysis.
+
+    Args:
+        df: DataFrame with data.
+        x_col: Column for x-axis.
+        y_col: Column for y-axis.
+        animation_col: Column to animate over (e.g., run_id, timestamp).
+        color_col: Optional column to color points by.
+        title: Plot title.
+        width: Graph width in pixels.
+        height: Graph height in pixels.
+    """
+    if handle_empty_data(df, "No data available for animation."):
+        return
+
+    # Check if required columns exist
+    required_cols = [x_col, y_col, animation_col]
+    if color_col:
+        required_cols.append(color_col)
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        st.warning(f"Missing required columns: {missing_cols}")
+        return
+
+    # Convert to pandas for Plotly animation support
+    pandas_df = df.to_pandas()
+
+    # Create animation frames
+    fig = px.scatter(
+        pandas_df,
+        x=x_col,
+        y=y_col,
+        animation_frame=animation_col,
+        color=color_col,
+        title=title,
+        labels={
+            x_col: x_col.replace('_', ' ').title(),
+            y_col: y_col.replace('_', ' ').title(),
+            animation_col: animation_col.replace('_', ' ').title()
+        }
+    )
+
+    # Update layout
+    fig.update_layout(
+        width=width,
+        height=height,
+        xaxis=dict(autorange=True),
+        yaxis=dict(autorange=True),
+    )
+
+    # Add animation controls
+    fig.update_layout(
+        updatemenus=[dict(
+            type="buttons",
+            buttons=[dict(label="Play",
+                         method="animate",
+                         args=[None, dict(mode="immediate",
+                                         frame=dict(duration=500, redraw=True),
+                                         fromcurrent=True,
+                                         transition=dict(duration=300))]),
+                    dict(label="Pause",
+                         method="animate",
+                         args=[[None], dict(mode="immediate",
+                                          frame=dict(duration=0, redraw=False),
+                                          transition=dict(duration=0))])]
+        )]
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_network_graph(
+    correlation_matrix: pl.DataFrame,
+    threshold: float = 0.5,
+    title: str = "Parameter Correlation Network",
+    width: int = 800,
+    height: int = 600
+) -> None:
+    """Render network graph showing parameter relationships.
+
+    Args:
+        correlation_matrix: Correlation matrix as Polars DataFrame.
+        threshold: Minimum correlation strength to show as edge.
+        title: Plot title.
+        width: Graph width in pixels.
+        height: Graph height in pixels.
+    """
+    if correlation_matrix.is_empty():
+        st.warning("No correlation data available for network visualization.")
+        return
+
+    try:
+        import networkx as nx
+    except ImportError:
+        st.warning("NetworkX required for network graphs. Install with: uv add networkx")
+        return
+
+    # Convert to pandas for networkx
+    corr_df = correlation_matrix.to_pandas()
+
+    # Create network graph
+    G = nx.Graph()
+
+    # Add nodes
+    for col in corr_df.columns:
+        G.add_node(col)
+
+    # Add edges for correlations above threshold
+    for i, col1 in enumerate(corr_df.columns):
+        for j, col2 in enumerate(corr_df.columns):
+            if i < j:  # Avoid duplicate edges
+                corr_value = abs(corr_df.loc[col1, col2])
+                if corr_value >= threshold:
+                    G.add_edge(col1, col2, weight=corr_value)
+
+    if len(G.edges()) == 0:
+        st.info(f"No correlations found above threshold {threshold}. Try lowering the threshold.")
+        return
+
+    # Calculate node positions
+    pos = nx.spring_layout(G, k=1, iterations=50, seed=42)
+
+    # Create edge traces
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines')
+
+    # Create node traces
+    node_x = []
+    node_y = []
+    node_text = []
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(node)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        hoverinfo='text',
+        text=node_text,
+        textposition="top center",
+        marker=dict(
+            showscale=True,
+            colorscale='YlGnBu',
+            size=20,
+            colorbar=dict(
+                thickness=15,
+                title='Node Connections',
+                xanchor='left',
+                titleside='right'
+            )
+        )
+    )
+
+    # Color nodes by degree (number of connections)
+    node_degrees = [G.degree(node) for node in G.nodes()]
+    node_trace.marker.color = node_degrees
+
+    # Create the figure
+    fig = go.Figure(data=[edge_trace, node_trace],
+                   layout=go.Layout(
+                       title=title,
+                       titlefont_size=16,
+                       showlegend=False,
+                       hovermode='closest',
+                       margin=dict(b=20, l=5, r=5, t=40),
+                       xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                       yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                       width=width,
+                       height=height))
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_statistics_table(runs_df: pd.DataFrame, show_mean: bool = False, return_df: bool = False) -> pd.DataFrame | None:
     """Render detailed statistics table.
 
     Args:
@@ -496,7 +693,7 @@ def render_statistics_table(runs_df: pd.DataFrame, show_mean: bool = False, retu
     return None
 
 
-def render_raw_data_table(runs_df: pd.DataFrame, selected_params: Optional[List[str]] = None) -> None:
+def render_raw_data_table(runs_df: pd.DataFrame, selected_params: list[str] | None = None) -> None:
     """Render raw fitness values table.
 
     Args:
@@ -552,7 +749,7 @@ def render_raw_data_table(runs_df: pd.DataFrame, selected_params: Optional[List[
         display_df["Configuration"] = runs_df.apply(create_group_label, axis=1)
 
         # Reorder columns
-        col_order = ["Configuration"] + [column_names.get(col, col) for col in available_cols]
+        col_order = ["Configuration"] + [column_names[col] if col in column_names else col for col in available_cols]
         display_df = display_df[col_order]
 
         st.dataframe(display_df, width="content")
@@ -579,7 +776,7 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
         return
 
     # Create tabs for different parameter types
-    tab_names = ["Histograms", "Box Plots", "Value Counts", "Correlation", "Advanced 3D"]
+    tab_names = ["Histograms", "Box Plots", "Value Counts", "Correlation", "Advanced 3D", "Animations", "Network"]
     tabs = st.tabs(tab_names)
 
     with tabs[0]:  # Histograms
@@ -675,6 +872,69 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
                 st.info("Select at least 3 parameters for radar chart.")
         else:
             st.info("Need at least 3 numeric parameters for advanced 3D visualizations.")
+
+    with tabs[5]:  # Animations
+        st.subheader("Animated Parameter Visualizations")
+        numeric_cols = [col for col in param_cols if param_df[col].dtype in [pl.Int64, pl.Float64]]
+
+        if len(numeric_cols) >= 2:
+            # Animated Scatter Plot
+            st.markdown("### Animated Scatter Plot")
+            col1, col2 = st.columns(2)
+            with col1:
+                x_param = st.selectbox("X-axis", numeric_cols, key="x_param_anim")
+            with col2:
+                y_param = st.selectbox("Y-axis", numeric_cols, key="y_param_anim")
+
+            # Check for time-like columns
+            time_cols = [col for col in param_df.columns if any(keyword in col.lower() for keyword in ['time', 'epoch', 'step', 'iteration'])]
+            if time_cols:
+                animation_param = st.selectbox("Animation parameter", time_cols, key="anim_param")
+            else:
+                animation_param = st.selectbox("Animation parameter", param_cols, key="anim_param")
+
+            color_param = st.selectbox("Color by", [None] + param_cols, key="color_param_anim")
+            size_param = st.selectbox("Size by", [None] + numeric_cols, key="size_param_anim")
+
+            if x_param and y_param:
+                render_animated_scatter_plot(
+                    param_df, x_param, y_param, animation_param, color_param, size_param,
+                    title=f"Animated Scatter: {x_param} vs {y_param}"
+                )
+        else:
+            st.info("Need at least 2 numeric parameters for animated visualizations.")
+
+    with tabs[6]:  # Network
+        st.subheader("Parameter Network Analysis")
+        numeric_cols = [col for col in param_cols if param_df[col].dtype in [pl.Int64, pl.Float64]]
+
+        if len(numeric_cols) >= 2:
+            # Network Graph
+            st.markdown("### Parameter Relationship Network")
+
+            # Correlation threshold
+            corr_threshold = st.slider(
+                "Correlation threshold",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.5,
+                step=0.1,
+                key="corr_threshold"
+            )
+
+            # Node size and color options
+            size_param = st.selectbox("Node size by", [None] + numeric_cols, key="network_size")
+            color_param = st.selectbox("Node color by", [None] + param_cols, key="network_color")
+
+            render_network_graph(
+                param_df, numeric_cols, corr_threshold, size_param, color_param,
+                title="Parameter Correlation Network"
+            )
+        else:
+            st.info("Need at least 2 numeric parameters for network analysis.")
+
+
+def render_metrics_distributions(metrics_df: pl.DataFrame) -> None:
     """Render distributions for metrics.
 
     Args:
@@ -709,7 +969,7 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
     with tabs[1]:  # Box Plots
         st.subheader("Metrics Box Plots")
         for metric in metrics_cols[:6]:
-            if metrics_df[metric].dtype in ['int64', 'float64']:
+            if metrics_df[metric].dtype in [pl.Int64, pl.Float64]:
                 color_col = 'dataset_name' if 'dataset_name' in metrics_df.columns else None
                 fig = _create_distribution_plot(
                     metrics_df, metric, "box", color_col, "Metrics "
@@ -718,7 +978,7 @@ def render_parameter_distributions(param_df: pl.DataFrame) -> None:
 
     with tabs[2]:  # Correlation
         st.subheader("Metrics Correlation")
-        numeric_cols = [col for col in metrics_cols if metrics_df[col].dtype in ['int64', 'float64']]
+        numeric_cols = [col for col in metrics_cols if metrics_df[col].dtype in [pl.Int64, pl.Float64]]
         if len(numeric_cols) > 1:
             corr_matrix = metrics_df[numeric_cols].corr()
             fig = px.imshow(
