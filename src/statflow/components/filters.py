@@ -22,15 +22,7 @@ import streamlit as st
 
 from statflow.config import State, DEFAULT_DATASET_RENAMES
 
-# Default values (inline, removed from config.py)
-DEFAULT_SHOW_MEAN = False
-DEFAULT_USE_CUSTOM_COLORS = True
-DEFAULT_GRAPH_WIDTH = 800
-DEFAULT_GRAPH_HEIGHT = 600
-DEFAULT_POINTS_DISPLAY = "outliers"
-DEFAULT_SHOW_ERROR_BARS = True
-
-# Default values (inline, removed from config.py for simplicity)
+# Default values
 DEFAULT_SHOW_MEAN = False
 DEFAULT_USE_CUSTOM_COLORS = True
 DEFAULT_GRAPH_WIDTH = 800
@@ -431,6 +423,7 @@ def render_dataset_names_expander() -> None:
     """Render dataset names customization in an expander for sidebar.
     
     Updates `session_state['dataset_renames']` with custom display names.
+    Stores structure: {original_name: {"display_name": str, "latex_name": str}}
     """
     from statflow.config import DEFAULT_DATASET_RENAMES
     
@@ -449,11 +442,34 @@ def render_dataset_names_expander() -> None:
         if st.button("Reset to Defaults", icon=":material/restart_alt:", key="reset_dataset_names"):
             st.session_state['dataset_renames'] = DEFAULT_DATASET_RENAMES.copy()
             st.rerun()
+            
+        def _get_display_name(entry):
+            if isinstance(entry, dict):
+                return entry.get("display_name", "")
+            return str(entry)
+            
+        def _update_rename(dataset, new_name):
+            entry = current_renames.get(dataset)
+            if isinstance(entry, dict):
+                # Update existing dict, preserving other keys like latex_name
+                entry["display_name"] = new_name
+                current_renames[dataset] = entry
+            elif isinstance(entry, str):
+                # Upgrade string to dict
+                current_renames[dataset] = {"display_name": new_name, "latex_name": entry}
+            else:
+                 # Create new
+                current_renames[dataset] = {"display_name": new_name, "latex_name": new_name}
+            st.session_state['dataset_renames'] = current_renames
         
         # Show text inputs for blackbox datasets (most need renaming)
         st.markdown("**Blackbox:**")
-        for dataset in [d for d in available_datasets if d.startswith("blackbox_")]:
-            current_name = current_renames[dataset] if dataset in current_renames else dataset
+        blackbox_datasets = [d for d in available_datasets if d.startswith("blackbox_")]
+        for dataset in blackbox_datasets:
+            entry = current_renames.get(dataset, dataset)
+            current_name = _get_display_name(entry)
+            if not current_name: current_name = dataset
+
             new_name = st.text_input(
                 dataset,
                 value=current_name,
@@ -461,13 +477,16 @@ def render_dataset_names_expander() -> None:
                 label_visibility="visible"
             )
             if new_name != current_name:
-                current_renames[dataset] = new_name
-                st.session_state['dataset_renames'] = current_renames
+                _update_rename(dataset, new_name)
         
         # Collapsible for real-life datasets
         with st.popover("Real-life datasets"):
-            for dataset in [d for d in available_datasets if not d.startswith("blackbox_")]:
-                current_name = current_renames[dataset] if dataset in current_renames else dataset
+            real_datasets = [d for d in available_datasets if not d.startswith("blackbox_")]
+            for dataset in real_datasets:
+                entry = current_renames.get(dataset, dataset)
+                current_name = _get_display_name(entry)
+                if not current_name: current_name = dataset
+
                 new_name = st.text_input(
                     dataset,
                     value=current_name,
@@ -475,8 +494,7 @@ def render_dataset_names_expander() -> None:
                     label_visibility="visible"
                 )
                 if new_name != current_name:
-                    current_renames[dataset] = new_name
-                    st.session_state['dataset_renames'] = current_renames
+                    _update_rename(dataset, new_name)
 
 
 def get_dataset_display_name(dataset: str) -> str:

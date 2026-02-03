@@ -29,16 +29,24 @@ def render_dataset_mode_and_selections():
     Returns:
         tuple: (selected_experiments, selected_datasets, dataset_param)
     """
-    # Dataset definition mode
+    options = [
+        "Dataset names are experiment names",
+        "Single dataset",
+        "Multiple datasets defined by parameter",
+    ]
+
+    # Handle legacy session state values
+    current = st.session_state.get("dataset_mode", options[0])
+    if current not in options:
+        current = options[0]
+
     dataset_mode = st.radio(
         "Choose how datasets are identified in your experiments. ",
-        options=[
-            "Dataset names are experiment names",
-            "Single dataset",
-            "Multiple datasets defined by parameter",
-        ],
-        key="dataset_mode",
+        options=options,
+        index=options.index(current),
+        key="dataset_mode_radio",
     )
+    st.session_state["dataset_mode"] = dataset_mode
 
     if dataset_mode == "Dataset names are experiment names":
         # Step 1: Dataset Selection (experiments are datasets)
@@ -50,7 +58,7 @@ def render_dataset_mode_and_selections():
         selected_experiments = handle_experiment_selection()
         selected_datasets = ["default"]
         dataset_param = DatasetParamMode.SINGLE_DATASET_MODE
-        dataset_param = "SINGLE_DATASET_MODE"
+        # dataset_param = "SINGLE_DATASET_MODE" # This line was redundant/incorrect in previous view
     else:
         # Step 1: Experiment Selection
         selected_experiments = handle_experiment_selection()
