@@ -26,7 +26,7 @@ class ServerStatusManager:
         Returns:
             bool: True if server is running, False otherwise.
         """
-        if 'server_running' not in st.session_state:
+        if "server_running" not in st.session_state:
             tracking_uri = st.session_state["mlflow_server_url"]
             if not tracking_uri.startswith("http"):
                 # If not HTTP, assume it's running (file:// or other)
@@ -39,9 +39,9 @@ class ServerStatusManager:
                     server_running = response.status_code == 200
                 except:
                     server_running = False
-            st.session_state['server_running'] = server_running
+            st.session_state["server_running"] = server_running
 
-        return st.session_state['server_running']
+        return st.session_state["server_running"]
 
     def display_sidebar(self) -> bool:
         """Display server status in the sidebar.
@@ -58,75 +58,6 @@ class ServerStatusManager:
                 st.error("Server Not Running", icon=":material/power_off:")
 
         return server_running
-
-    def handle_connection_options(self) -> None:
-        """Handle connection options when server is not running."""
-        tab_mlflow, tab_db = st.tabs(["Connect to MLflow", "Database Viewer"])
-
-        with tab_mlflow:
-            st.error("MLflow server is not running", icon=":material/power_off:")
-            if st.button(
-                icon=":material/refresh:",
-                label="Recheck server status",
-                key="recheck_mlflow_server_status",
-            ):
-                # Force recheck by clearing cached status
-                if 'server_running' in st.session_state:
-                    del st.session_state['server_running']
-                st.rerun()
-
-        with tab_db:
-            self._render_database_viewer()
-
-    def _render_database_viewer(self) -> None:
-        """Render the database viewer interface."""
-        st.markdown("### Database Viewer")
-        db_path = st.text_input(
-            "Database file path", placeholder="/path/to/database.db"
-        )
-
-        if db_path:
-            if not Path(db_path).exists():
-                st.error(f"Database file does not exist: {db_path}")
-            else:
-                try:
-                    conn = sqlite3.connect(db_path)
-
-                    # Get all tables
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table';"
-                    )
-                    tables = cursor.fetchall()
-                    table_names = [table[0] for table in tables]
-
-                    if table_names:
-                        # Get row counts for all tables and filter out empty ones
-                        non_empty_tables = []
-                        for table in table_names:
-                            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                            row_count = cursor.fetchone()[0]
-                            if row_count > 0:
-                                non_empty_tables.append(table)
-
-                        if non_empty_tables:
-                            # Table selector
-                            selected_table = st.pills(
-                                "Select a table to view",
-                                options=non_empty_tables,
-                                key="table_selector",
-                            )
-
-                            if selected_table:
-                                self._render_table_details(selected_table, conn)
-                        else:
-                            st.warning("No tables with data found in the database")
-                    else:
-                        st.warning("No tables found in the database")
-
-                    conn.close()
-                except Exception as e:
-                    st.error(f"Error inspecting database: {e}")
 
     def _render_table_details(self, table_name: str, conn) -> None:
         """Render schema and data for a selected table."""

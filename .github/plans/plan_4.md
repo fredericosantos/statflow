@@ -36,7 +36,7 @@
 #### 2. Remove Non-IO Try/Except
 - Scan `utils/data_processing.py`, `visualization.py`, `table_builders.py` for try/except not related to IO (file/network).
 - Remove those that catch broad exceptions masking bugs (e.g., ValueError/TypeError in parsing).
-- Keep try/except for `pd.read_csv`, `requests.get`, `yaml.safe_load`, etc.
+- Keep try/except for `pl.read_csv`, `requests.get`, `yaml.safe_load`, etc.
 
 #### 3. Break Down Large Functions
 - In `table_builders.py`:

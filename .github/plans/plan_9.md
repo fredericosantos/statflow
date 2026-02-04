@@ -19,14 +19,14 @@
 Replace all pandas usage with Polars for better performance, especially with large MLflow datasets. Polars is faster and more memory-efficient than pandas for data processing tasks.
 
 ### Scope
-- Update all imports from `import pandas as pd` to `import polars as pl`
+- Update all imports from `` to `import polars as pl`
 - Convert all DataFrame operations from pandas to Polars equivalents
-- Update type hints from `pd.DataFrame` to `pl.DataFrame`
+- Update type hints from `pl.DataFrame` to `pl.DataFrame`
 - Ensure compatibility with existing Streamlit and Plotly integrations (Polars DataFrames can be converted to pandas when needed for plotting)
 - Update dependencies in `pyproject.toml`: Replace `pandas` with `polars`
 
 ### Files to Update
-Based on grep search, the following files use pandas/pd.:
+Based on grep search, the following files use pandas/pl.:
 - `src/statflow/Home.py`
 - `src/statflow/pages_modules/module_1_Parameters/processor.py`
 - `src/statflow/pages_modules/module_2_Metrics/processor.py`
@@ -35,10 +35,10 @@ Based on grep search, the following files use pandas/pd.:
 - And potentially others in `utils/`, `components/`, etc.
 
 ### Migration Strategy
-1. **Update Imports**: Change `import pandas as pd` to `import polars as pl`
-2. **DataFrame Creation**: Use `pl.DataFrame()` instead of `pd.DataFrame()`
+1. **Update Imports**: Change `` to `import polars as pl`
+2. **DataFrame Creation**: Use `pl.DataFrame()` instead of `pl.DataFrame()`
 3. **Operations**: Translate pandas methods to Polars equivalents (e.g., `df.groupby()` → `df.group_by()`, `df.merge()` → `df.join()`, etc.)
-4. **Type Hints**: Change `pd.DataFrame` to `pl.DataFrame`
+4. **Type Hints**: Change `pl.DataFrame` to `pl.DataFrame`
 5. **Plotly Compatibility**: Where needed, convert Polars DataFrames to pandas with `.to_pandas()` for Plotly charts
 6. **Testing**: Ensure all functionality works after migration, especially data fetching and visualizations
 

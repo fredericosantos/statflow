@@ -1,128 +1,183 @@
 """
 Metrics page for the Statflow application.
 
-This page provides an overview of available metrics, their distributions, and selection.
+This page allows users to explore, filter, and configure experiment metrics.
 
-2_📊_Metrics.py
-├── Metrics overview and summary
-├── Metrics distribution visualization
-└── Metrics selection for analysis
-
-Usage:
-    Streamlit page for metrics management.
+metrics.py
+├── main()                          # Main page entry point
+└── render_metric_filters()         # Dynamic metric filter UI with sliders
 """
 
 import streamlit as st
+import polars as pl
 
-from statflow.config import State, DEFAULT_APP_NAME
-from statflow.pages_modules.shared.server_status import ServerStatusManager
-from statflow.functional.mlflow.mlflow_client import get_filtered_runs
-from statflow.components.tables import render_table_with_downloads
-from statflow.components.graphs import render_metrics_distributions
-from statflow.pages_modules.module_metrics.metrics_fetcher import fetch_metrics_data
-from statflow.pages_modules.module_metrics.metrics_analyzer import prepare_metrics_summary
+from statflow.config import SessionState
+from statflow.shared.server_status import ServerStatusManager
+from statflow.functional.dataframes.data_processing import fetch_experiment_data
 
 
 st.set_page_config(
-    page_title=f"Metrics - {st.session_state['app_name'] if 'app_name' in st.session_state else DEFAULT_APP_NAME}",
+    page_title=f"Metrics - {st.session_state['app_name']}",
     page_icon=":material/bar_chart:",
     layout="wide",
 )
 
 
-def main():
-    # Setup sidebar with server status
-    manager = ServerStatusManager()
-    server_running = manager.display_sidebar()
+def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
+    """Render dynamic metric filters with sliders for numerical filtering.
 
-    # Check if MLflow server is running
-    if not server_running:
-        st.error("🚫 MLflow server is not running. This page requires an active MLflow server connection.", icon=":material/power_off:")
-        st.info("Please start your MLflow server and refresh this page.")
-        st.markdown("""
-        **To start MLflow server:**
-        ```bash
-        mlflow server --host 0.0.0.0 --port 5000
-        ```
-        """)
-        return
+    Args:
+        metric_df: DataFrame with metric columns.
 
-    st.title(":material/bar_chart: Metrics")
-    st.markdown("Explore and select metrics for analysis.")
+    Returns:
+        Filtered DataFrame.
+    """
+    metric_cols = [
+        col for col in metric_df.columns if col not in ["dataset_name"]
+    ]
 
-    # Help section
-    with st.expander("ℹ️ How to use this page", expanded=False):
-        st.markdown("""
-        **Metrics Page Help:**
+    if not metric_cols:
+        return metric_df
 
-        1. **Metrics Distributions**: View histograms, box plots, and correlations of performance metrics
-        2. **Advanced 3D Visualizations**: Use 3D scatter plots and radar charts for multi-metric analysis
-        3. **Experiment Comparison**: Compare metrics across different experiments
-        4. **Interactive Charts**: Zoom, pan, and select data points in all visualizations
+    # Initialize active filters in session state
+    if "active_metric_filters" not in st.session_state:
+        st.session_state.active_metric_filters = []
 
-        **Tips:**
-        - Use the tabs to explore different aspects of your metrics
-        - 3D plots help visualize trade-offs between multiple objectives
-        - Correlation matrices show relationships between metrics
-        - Data is cached for 10 minutes to improve performance
-        """)
+    # Add filter using a form to prevent rerun on selectbox change
+    available_to_add = [
+        m for m in metric_cols if m not in st.session_state.active_metric_filters
+    ]
 
-    # Check if experiments and datasets are selected
-    if not (st.session_state['selected_experiments'] if 'selected_experiments' in st.session_state else []):
-        st.warning("Please select experiments on the Home page first.")
-        return
+    if available_to_add:
+        with st.form("add_metric_filter_form", clear_on_submit=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_filter = st.selectbox(
+                    "Select metric to filter",
+                    options=available_to_add,
+                    key="new_metric_filter_select",
+                    label_visibility="collapsed",
+                )
+            with col2:
+                submitted = st.form_submit_button(
+                    "Add Filter", width='content'
+                )
 
-    if not (st.session_state['selected_datasets'] if 'selected_datasets' in st.session_state else []):
-        st.warning("Please select datasets on the Home page first.")
-        return
+            if submitted and new_filter:
+                if new_filter not in st.session_state.active_metric_filters:
+                    st.session_state.active_metric_filters.append(new_filter)
+                    st.rerun()
 
-    # Fetch metrics data
-    with st.spinner("Loading metrics data..."):
-        metrics_df = fetch_metrics_data()
+    # Render active filters with sliders
+    filtered_df = metric_df.clone()
 
-    if metrics_df.empty:
-        st.error("No metrics data found for the selected experiments and datasets.")
-        return
+    for metric in st.session_state.active_metric_filters:
+        if metric not in metric_df.columns:
+            continue
 
-    # Metrics Summary
-    with st.expander("Metrics Summary", expanded=True, icon=":material/summarize:"):
-        summary_df = prepare_metrics_summary(metrics_df)
-        if not summary_df.empty:
-            render_table_with_downloads(summary_df, "Metrics Summary")
-        else:
-            st.info("No metrics summary available.")
+        col_data = metric_df.get_column(metric).drop_nulls()
+        if col_data.is_empty():
+            continue
 
-    # Metrics Distributions
-    with st.expander("Metrics Distributions", expanded=False, icon=":material/bar_chart:"):
-        render_metrics_distributions(metrics_df)
+        min_val = float(col_data.min())
+        max_val = float(col_data.max())
 
-    # Metrics Selection
-    with st.expander("Metrics Selection", expanded=False, icon=":material/checklist:"):
-        st.markdown("Select metrics to include in analysis:")
+        # Avoid slider error when min == max
+        if min_val == max_val:
+            max_val = min_val + 1.0
 
-        available_metrics = [col for col in metrics_df.columns if col != 'dataset_name']
+        filter_col, remove_col = st.columns([5, 1])
+        with filter_col:
+            selected_range = st.slider(
+                f"Filter: {metric}",
+                min_value=min_val,
+                max_value=max_val,
+                value=(min_val, max_val),
+                key=f"metric_filter_{metric}",
+            )
+        with remove_col:
+            if st.button(
+                "✕", key=f"remove_metric_filter_{metric}", help=f"Remove {metric} filter"
+            ):
+                st.session_state.active_metric_filters.remove(metric)
+                st.rerun()
 
-        if 'selected_metrics' not in st.session_state:
-            st.session_state.selected_metrics = available_metrics
-
-        selected_metrics = st.multiselect(
-            "Choose metrics for analysis",
-            options=available_metrics,
-            default=st.session_state.selected_metrics,
-            key="metrics_selector"
+        # Apply filter
+        filtered_df = filtered_df.filter(
+            (pl.col(metric) >= selected_range[0]) & (pl.col(metric) <= selected_range[1])
         )
 
-        st.session_state.selected_metrics = selected_metrics
+    return filtered_df
 
-        if selected_metrics:
-            st.success(f"Selected {len(selected_metrics)} metric{'s' if len(selected_metrics) != 1 else ''} for analysis")
-        else:
-            st.warning("No metrics selected. Analysis may be limited.")
 
-    # Save configuration
-    if st.button("Save Metrics Configuration", icon=":material/save:"):
-        State.save_to_config()
-        st.success("Metrics configuration saved!")
+def main():
+    SessionState.initialize()
+
+    status_manager = ServerStatusManager()
+    status_manager.display_sidebar()
+
+    st.title(":material/bar_chart: Metrics")
+    st.markdown("Explore and configure experiment metrics for analysis.")
+
+    if not st.session_state["selected_experiments"]:
+        st.warning("Please select experiments first in Get Started.")
+        return
+
+    selected_datasets = st.session_state["selected_datasets"]
+    if not selected_datasets:
+        st.warning("Please select datasets first in Get Started.")
+        return
+
+    # Metric Selection using SelectionManager
+    from statflow.components.selection_ui import SelectionManager
+    
+    available_metrics = st.session_state.get("available_metrics", [])
+    if not available_metrics:
+        st.warning("No metrics found. Please load experiment data first.")
+        return
+    
+    manager = SelectionManager(
+        options=available_metrics,
+        session_key="selected_metrics",
+        label="Metric Selection",
+        enable_ordering=False,
+        enable_renaming=True,
+        renames_session_key="metric_renames",
+    )
+    manager.render()
+    
+    selected_metrics = st.session_state.get("selected_metrics", [])
+    if not selected_metrics:
+        return
+
+    # Fetch metric data
+    with st.spinner("Loading metric data..."):
+        metric_df = fetch_experiment_data("metrics.")
+
+    if metric_df.is_empty():
+        st.error("No metric data found for the selected experiments and datasets.")
+        return
+
+    # Preview data
+    st.caption(f"Found {len(metric_df)} runs with metrics")
+
+    # Metric Filters
+    with st.expander(
+        "Metric Filters", expanded=False, icon=":material/filter_list:"
+    ):
+        st.markdown("Add filters to focus on specific metric ranges:")
+        metric_df = render_metric_filters(metric_df)
+
+    # Check for empty filtered data
+    if metric_df.is_empty():
+        st.warning(
+            "No data matches the current filter criteria. Please adjust your filters."
+        )
+        return
+
+    # Data preview
+    with st.expander("Data Preview", expanded=False, icon=":material/table:"):
+        st.dataframe(metric_df.head(100), width='content')
 
 
 if __name__ == "__main__":

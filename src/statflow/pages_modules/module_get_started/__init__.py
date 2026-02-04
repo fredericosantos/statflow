@@ -10,9 +10,8 @@ module_get_started/
 ├── dataset_config.py        # Dataset configuration logic
 ├── parameter_config.py      # Parameter selection and linking logic
 ├── dataset_mode.py          # Dataset definition mode selection (UI)
-├── experiment_selection.py  # Experiment/dataset selection logic (UI)
-└── parameter_selection.py   # Parameter selection and linking UI
+└── experiment_selection.py  # Experiment/dataset selection logic (UI)
 """
 
 # Import and re-export UI modules for backward compatibility
-from . import dataset_mode, parameter_selection
+from . import dataset_mode

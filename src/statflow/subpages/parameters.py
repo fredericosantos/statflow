@@ -3,34 +3,18 @@ Parameters page for the Statflow application.
 
 This page allows users to explore, filter, and configure experiment parameters.
 
-1_🔧_Parameters.py
-├── Parameter exploration and visualization
-├── Parameter filtering and selection
-└── Session state integration for parameter choices
-
-Usage:
-    Streamlit page for parameter management.
+parameters.py
+├── main()                          # Main page entry point
+├── handle_parameter_selection()    # Parameter selection UI
+└── render_parameter_filters()      # Dynamic parameter filter UI
 """
 
 import streamlit as st
-import pandas as pd
 import polars as pl
 
-from statflow.config import State
-from statflow.pages_modules.shared.server_status import ServerStatusManager
-from statflow.functional.mlflow.mlflow_client import get_filtered_runs
-from statflow.components.filters import (
-    render_dataset_selector, render_mpf_filter, render_beta_filter,
-    render_pinflate_filter, render_display_options, render_graph_config,
-    render_filter_summary, render_global_filters
-)
-from statflow.components.tables import render_table_with_downloads
-from statflow.components.graphs import (
-    render_parameter_distributions, render_animated_scatter_plot, render_network_graph
-)
-from statflow.pages_modules.module_get_started import (
-    parameter_selection,
-)
+from statflow.config import SessionState
+from statflow.shared.server_status import ServerStatusManager
+from statflow.functional.dataframes.data_processing import fetch_experiment_data
 
 
 st.set_page_config(
@@ -40,185 +24,194 @@ st.set_page_config(
 )
 
 
+def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
+    """Render dynamic parameter filters with Add Filter button.
+
+    Args:
+        param_df: DataFrame with parameter columns.
+
+    Returns:
+        Filtered DataFrame.
+    """
+    param_cols = [
+        col for col in param_df.columns if col not in ["dataset_name", "group_label"]
+    ]
+
+    if not param_cols:
+        return param_df
+
+    # Initialize active filters in session state
+    if "active_param_filters" not in st.session_state:
+        st.session_state.active_param_filters = []
+
+    # Add filter using a form to prevent rerun on selectbox change
+    available_to_add = [
+        p for p in param_cols if p not in st.session_state.active_param_filters
+    ]
+
+    if available_to_add:
+        with st.form("add_filter_form", clear_on_submit=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_filter = st.selectbox(
+                    "Select parameter to filter",
+                    options=available_to_add,
+                    key="new_filter_select",
+                    label_visibility="collapsed",
+                )
+            with col2:
+                submitted = st.form_submit_button(
+                    "Add Filter", width='content'
+                )
+
+            if submitted and new_filter:
+                if new_filter not in st.session_state.active_param_filters:
+                    st.session_state.active_param_filters.append(new_filter)
+                    st.rerun()
+
+    # Render active filters
+    filtered_df = param_df.clone()
+
+    for param in st.session_state.active_param_filters:
+        if param not in param_df.columns:
+            continue
+
+        col_data = param_df.get_column(param)
+        unique_vals = sorted(col_data.drop_nulls().unique().to_list())
+
+        filter_col, remove_col = st.columns([5, 1])
+        with filter_col:
+            selected_vals = st.multiselect(
+                f"Filter: {param}",
+                unique_vals,
+                default=unique_vals,
+                key=f"filter_{param}",
+            )
+        with remove_col:
+            if st.button("✕", key=f"remove_filter_{param}", help=f"Remove {param} filter"):
+                st.session_state.active_param_filters.remove(param)
+                st.rerun()
+
+        if selected_vals:
+            filtered_df = filtered_df.filter(pl.col(param).is_in(selected_vals))
+
+    return filtered_df
+
+
+def handle_parameter_selection(
+    selected_experiments: list[str], dataset_param: str
+) -> list[str] | None:
+    """Handle parameter selection UI."""
+    available_params = st.session_state["available_params"]
+    selectable_params = [p for p in available_params if p != dataset_param]
+
+    st.markdown("Select parameters to include in comparisons and analysis:")
+
+    selected_params = st.pills(
+        "Parameters",
+        options=selectable_params,
+        default=st.session_state.get("selected_params", selectable_params),
+        key="parameter_selector",
+        selection_mode="multi",
+    )
+
+    st.session_state.selected_params = selected_params
+    return selected_params
+
+
 def main():
-    # Initialize session state
-    State.initialize()
+    SessionState.initialize()
 
-    # Setup sidebar with server status
     status_manager = ServerStatusManager()
-    server_running = status_manager.display_sidebar()
-
-    # Check if MLflow server is running
-    if not server_running:
-        st.error("MLflow server is not running. This page requires an active MLflow server connection.", icon=":material/power_off:")
-        st.info("Please start your MLflow server and refresh this page.")
-        st.markdown("""
-        **To start MLflow server:**
-        ```bash
-        mlflow server --host 0.0.0.0 --port 5000
-        ```
-        """)
-        return
+    status_manager.display_sidebar()
 
     st.title(":material/tune: Parameters")
     st.markdown("Explore and configure experiment parameters for analysis.")
 
-    # Help section
-    with st.expander("ℹ️ How to use this page", expanded=False):
-        st.markdown("""
-        **Parameters Page Help:**
-
-        1. **Parameter Distributions**: View histograms, box plots, and correlations of experiment parameters
-        2. **Advanced 3D Visualizations**: Use 3D scatter plots and radar charts for deeper parameter analysis
-        3. **Parameter Filters**: Narrow down your analysis by filtering parameter ranges
-        4. **Interactive Charts**: Zoom, pan, and select data points in all visualizations
-
-        **Tips:**
-        - Use the tabs to switch between different visualization types
-        - 3D plots require at least 3 numeric parameters
-        - Filters are applied in real-time to all visualizations
-        - Data is cached for 10 minutes to improve performance
-        """)
-
-    # Check if experiments and datasets are selected
-    if not st.session_state['selected_experiments']:
-        st.warning("Please select experiments on the Home page first.")
+    if not st.session_state["selected_experiments"]:
+        st.warning("Please select experiments first.")
         return
 
-    if not st.session_state['selected_datasets']:
-        st.warning("Please select datasets on the Home page first.")
+    selected_datasets = st.session_state["selected_datasets"]
+    if not selected_datasets:
+        st.warning("Please select datasets first.")
         return
 
-    # Parameter Setup (moved from Get Started)
-    if not st.session_state['selected_params']:
-        st.info("Please configure parameters for analysis.")
-        # Get dataset_param from session state (set in get_started)
-        dataset_param = st.session_state['dataset_param']
-        if dataset_param:
-            parameter_selection.render_parameter_selection(st.session_state['selected_experiments'], dataset_param)
-            # Check if parameters were selected
-            if not st.session_state['selected_params']:
-                st.stop()  # Wait for parameter selection
-        else:
-            st.error("Dataset parameter not configured. Please complete setup on the Home page.")
-            return
+    with st.expander(
+        "Parameter Configuration", expanded=True, icon=":material/settings:"
+    ):
+        selected_params = handle_parameter_selection(
+            st.session_state["selected_experiments"], st.session_state["dataset_param"]
+        )
+
+    if not selected_params:
+        return
 
     # Fetch parameter data
     with st.spinner("Loading parameter data..."):
-        param_df = fetch_parameter_data()
+        param_df = fetch_experiment_data("params.")
 
-    if param_df.empty:
+    if param_df.is_empty():
         st.error("No parameter data found for the selected experiments and datasets.")
         return
-    # Parameter Filters
-    with st.expander("Parameter Filters", expanded=False, icon=":material/filter_list:"):
-        st.markdown("Filter parameters to focus on specific values:")
 
-        # Use Polars for filtering
-        filtered_df = param_df.clone()
+    comparison_params = st.session_state["selected_params"]
+    if not comparison_params:
+        return
 
-        param_cols = [col for col in param_df.columns if col != 'dataset_name']
-
-        for param in param_cols[:5]:  # Limit to 5 to avoid clutter
-            if param_df[param].dtype in [pl.Int64, pl.Float64]:
-                min_val = float(param_df[param].min())
-                max_val = float(param_df[param].max())
-                selected_range = st.slider(
-                    f"Filter {param}",
-                    min_val, max_val, (min_val, max_val),
-                    key=f"filter_{param}"
-                )
-                filtered_df = filtered_df.filter(
-                    (pl.col(param) >= selected_range[0]) & (pl.col(param) <= selected_range[1])
-                )
-            elif param_df[param].n_unique() < 20:  # Categorical with few values
-                unique_vals = sorted(param_df[param].drop_nulls().unique().to_list())
-                selected_vals = st.multiselect(
-                    f"Filter {param}",
-                    unique_vals, unique_vals,
-                    key=f"filter_{param}"
-                )
-                if selected_vals:
-                    filtered_df = filtered_df.filter(pl.col(param).is_in(selected_vals))
-
-        # Update param_df with filtered data
-        param_df = filtered_df
+    # Parameter Filters - moved before Group Selection
+    with st.expander(
+        "Parameter Filters", expanded=False, icon=":material/filter_list:"
+    ):
+        st.markdown("Add filters to focus on specific parameter values:")
+        param_df = render_parameter_filters(param_df)
 
     # Check for empty filtered data
     if param_df.is_empty():
-        st.warning("⚠️ No data matches the current filter criteria. Please adjust your filters to see parameter data.")
+        st.warning(
+            "No data matches the current filter criteria. Please adjust your filters."
+        )
         return
 
-    # Dataset Renaming
-    with st.expander("Dataset Renaming", expanded=False, icon=":material/edit:"):
-        st.markdown("Customize display names for datasets (used in exports and visualizations):")
+    # Create group labels
+    exprs = []
+    for i, p in enumerate(comparison_params):
+        if i > 0:
+            exprs.append(pl.lit(", "))
+        exprs.append(pl.lit(f"{p}="))
+        exprs.append(pl.col(p).cast(pl.Utf8))
 
-        # Get current renames from session state, merged with defaults
-        from statflow.config import DEFAULT_DATASET_RENAMES
-        saved_renames = st.session_state['dataset_renames']
-        current_renames = DEFAULT_DATASET_RENAMES.copy()
-        current_renames.update(saved_renames)  # User customizations override defaults
-        st.session_state['dataset_renames'] = current_renames  # Ensure merged version is in state
+    param_df = param_df.with_columns(pl.concat_str(exprs).alias("group_label"))
 
-        # Reset button
-        if st.button("Reset to Defaults", icon=":material/restart_alt:", key="reset_dataset_names_params"):
-            st.session_state['dataset_renames'] = DEFAULT_DATASET_RENAMES.copy()
-            State.save_to_config()
-            st.success("Dataset names reset to defaults!")
-            st.rerun()
+    available_groups = sorted(
+        param_df.get_column("group_label").drop_nulls().unique().to_list()
+    )
 
-        if selected_datasets:
-            st.markdown("**Selected Datasets:**")
-            
-            # Create a form for renaming
-            with st.form("dataset_renaming_form_params"):
-                new_renames = {}
-                for dataset in selected_datasets:
-                    current_name = current_renames.get(dataset, dataset)
-                    new_name = st.text_input(
-                        f"Display name for '{dataset}':",
-                        value=current_name,
-                        key=f"params_rename_{dataset}"
-                    )
-                    new_renames[dataset] = new_name
-                
-                if st.form_submit_button("Save Dataset Names"):
-                    # Update session state
-                    updated_renames = current_renames.copy()
-                    updated_renames.update(new_renames)
-                    st.session_state['dataset_renames'] = updated_renames
-                    # Save to config
-                    State.save_to_config()
-                    st.success("Dataset names saved!")
-                    st.rerun()  # Refresh to show updated names
-        else:
-            st.info("No datasets selected. Please select datasets on the Home page first.")
+    # Use SORTED key for cache (so A->B and B->A share same cache)
+    sorted_cache_key = ",".join(sorted(comparison_params))
 
-    # Parameter Summary
-    with st.expander("Parameter Summary", expanded=True, icon=":material/summarize:"):
-        summary_df = prepare_parameter_summary(param_df)
-        if not summary_df.empty:
-            render_table_with_downloads(summary_df, "Parameter Summary")
-        else:
-            st.info("No parameter summary available.")
+    # Use SelectionManager for group selection with caching
+    from statflow.components.selection_ui import SelectionManager
+    
+    manager = SelectionManager(
+        options=available_groups,
+        session_key="selected_groups",
+        label="Group Selection",
+        enable_ordering=True,
+        enable_renaming=True,
+        renames_session_key="group_renames",
+        use_fragment=True,
+        cache_key=sorted_cache_key,
+        cache_param_order=comparison_params,
+    )
+    manager.render()
 
-    # Parameter Distributions
-    with st.expander("Parameter Distributions", expanded=False, icon=":material/bar_chart:"):
-        render_parameter_distributions(param_df)
+    selected_groups = st.session_state.get("selected_groups", [])
 
-    # Parameter Filtering
-    with st.expander("Parameter Filtering", expanded=False, icon=":material/filter_list:"):
-        st.markdown("Configure parameter filters for analysis:")
-
-        # Use existing filter components
-        render_global_filters()
-
-        # Additional parameter-specific filters can be added here
-
-    # Save configuration
-    if st.button("Save Parameter Configuration", icon=":material/save:"):
-        State.save_to_config()
-        st.success("Parameter configuration saved!")
+    if selected_groups:
+        param_df = param_df.filter(
+            pl.col("group_label").is_in(st.session_state["selected_groups"])
+        )
 
 
 if __name__ == "__main__":

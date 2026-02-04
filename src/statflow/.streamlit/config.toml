@@ -1,9 +1,8 @@
 [theme]
-font = "SF Mono"
-headingFont = "SF Mono"
-codeFont = "JetBrains Mono"
-
-[theme.sidebar]
-font = "SF Mono"
-headingFont = "SF Mono"
-codeFont = "JetBrains Mono"
+font = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace"
+headingFont = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace"
+codeFont = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace"
+primaryColor = "#8632d4"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#1E1E2E"
+textColor = "#FAFAFA"

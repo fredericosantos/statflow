@@ -2,22 +2,20 @@
 Experiment selection logic for get started page.
 
 This module handles the logic for selecting experiments from MLflow,
-including experiment discovery, selection UI, and metadata updates.
+including experiment discovery and selection UI.
 
 experiment_selector.py
-├── handle_experiment_selection()           # Handle experiment selection with custom label
-├── handle_experiment_selection_as_datasets() # Handle experiment selection as datasets
-└── _update_experiment_metadata()           # Update session state with experiment metadata
+├── select_experiment()              # Handle experiment selection with custom label
+├── select_experiment_as_datasets()  # Handle experiment selection as datasets
 """
 
 import streamlit as st
-from statflow.functional.mlflow.mlflow_client import (
-    get_experiment_names,
-    get_metadata_from_experiments
-)
+
+from statflow.loggers.mlflow.mlflow_client import get_experiment_names
+from statflow.loggers.mlflow.runs_cache import RunsCache
 
 
-def handle_experiment_selection_as_datasets() -> list[str] | None:
+def select_experiment_as_datasets() -> list[str] | None:
     """Handle dataset selection when datasets are experiment names.
 
     Returns:
@@ -30,7 +28,7 @@ def handle_experiment_selection_as_datasets() -> list[str] | None:
     selected_datasets = st.pills(
         "Select Datasets from MLFlow",
         options=experiment_names,
-        default=st.session_state['selected_datasets'] if 'selected_datasets' in st.session_state else [],
+        default=st.session_state["selected_datasets"],
         key="dataset_selector_from_experiments",
         selection_mode="multi",
     )
@@ -40,14 +38,21 @@ def handle_experiment_selection_as_datasets() -> list[str] | None:
 
     # Also update experiments for metadata
     selected_experiments = selected_datasets
-    if selected_experiments != (st.session_state['selected_experiments'] if 'selected_experiments' in st.session_state else []):
-        _update_experiment_metadata(selected_experiments)
+    if selected_experiments != st.session_state["selected_experiments"]:
         st.session_state.selected_experiments = selected_experiments
+        # Clear cache and load initial batch
+        RunsCache.clear_cache()
+        if selected_experiments:
+            max_results = st.session_state.get("max_results", 2000)
+            with st.spinner("Loading experiment runs..."):
+                RunsCache.load_runs(selected_experiments, max_results=max_results)
 
     return selected_datasets
 
 
-def handle_experiment_selection(label: str = "Select Experiments from MLFlow") -> list[str] | None:
+def select_experiment(
+    label: str = "Select Experiments from MLFlow",
+) -> list[str] | None:
     """Handle experiment selection UI and logic.
 
     Args:
@@ -63,28 +68,19 @@ def handle_experiment_selection(label: str = "Select Experiments from MLFlow") -
     selected_experiments = st.pills(
         label,
         options=experiment_names,
-        default=st.session_state['selected_experiments'] if 'selected_experiments' in st.session_state else [],
+        default=st.session_state["selected_experiments"],
         key="experiment_selector",
         selection_mode="multi",
     )
 
-    # Check if selection changed
-    if selected_experiments != (st.session_state['selected_experiments'] if 'selected_experiments' in st.session_state else []):
-        _update_experiment_metadata(selected_experiments)
+    # Check if selection changed - load initial runs
+    if selected_experiments != st.session_state["selected_experiments"]:
         st.session_state.selected_experiments = selected_experiments
+        # Clear cache and load initial batch
+        RunsCache.clear_cache()
+        if selected_experiments:
+            max_results = st.session_state.get("max_results", 2000)
+            with st.spinner("Loading experiment runs..."):
+                RunsCache.load_runs(selected_experiments, max_results=max_results)
 
     return selected_experiments
-
-
-def _update_experiment_metadata(selected_experiments: list[str]) -> None:
-    """Update session state with metadata for selected experiments."""
-    if selected_experiments:
-        with st.spinner("Loading experiment metadata..."):
-            metadata = get_metadata_from_experiments(tuple(selected_experiments))
-            st.session_state.available_params = metadata["params"]
-            st.session_state.available_param_values = metadata["param_values"]
-            st.session_state.available_metrics = metadata["metrics"]
-    else:
-        st.session_state.available_params = []
-        st.session_state.available_param_values = {}
-        st.session_state.available_metrics = []
