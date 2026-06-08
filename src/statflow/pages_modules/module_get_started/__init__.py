@@ -1,17 +1,18 @@
 """
-Logic and UI modules for get started page.
+Logic and UI modules for the Get Started page.
 
-This package contains logic and UI components for the get started page,
-organized by functionality for better maintainability.
+This package contains the page-specific logic and UI for selecting the data
+source, experiments, and datasets to analyze.
 
 module_get_started/
 ├── __init__.py              # Package initialization and exports
-├── experiment_selector.py   # Experiment selection logic
-├── dataset_config.py        # Dataset configuration logic
-├── parameter_config.py      # Parameter selection and linking logic
+├── constants.py             # Dataset-param mode enums
+├── provider_config.py       # Data-source provider picker + connection config
+├── server_status.py         # Provider-unreachable handling + db viewer (MLflow)
+├── experiment_selector.py   # Experiment/dataset selection from the provider
 ├── dataset_mode.py          # Dataset definition mode selection (UI)
-└── experiment_selection.py  # Experiment/dataset selection logic (UI)
+└── dataset_config.py        # Dataset configuration logic
 """
 
-# Import and re-export UI modules for backward compatibility
-from . import dataset_mode
+# Re-export for callers that import the module from the package namespace.
+from . import dataset_mode as dataset_mode

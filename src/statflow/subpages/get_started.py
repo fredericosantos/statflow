@@ -20,6 +20,9 @@ from statflow.pages_modules.module_get_started import (
     dataset_mode,
 )
 from statflow.pages_modules.module_get_started.server_status import handle_server_status
+from statflow.pages_modules.module_get_started.provider_config import (
+    render_provider_config,
+)
 from statflow.components.selection_ui import render_renaming_ui
 from statflow.shared.server_status import ServerStatusManager
 
@@ -32,11 +35,11 @@ def main():
         page_icon=":material/home:",
     )
     status_manager = ServerStatusManager()
+    render_provider_config()
     server_running = status_manager.display_sidebar()
 
-
     if not server_running:
-        server_running = handle_server_status(status_manager)
+        handle_server_status(status_manager)
         return
 
     # Page title
