@@ -63,12 +63,15 @@ class RunsCache:
             st.session_state[cls.EXPERIMENTS_KEY] = list(experiments)
             st.session_state[cls.CURSORS_KEY] = {}
 
-        # If already have data, return it
+        # If already have data, return it (re-deriving params/metrics in case the
+        # session lost them, e.g. after a provider switch or a fresh page load).
         if (
             cls.CACHE_KEY in st.session_state
             and not st.session_state[cls.CACHE_KEY].is_empty()
         ):
-            return st.session_state[cls.CACHE_KEY]
+            df = st.session_state[cls.CACHE_KEY]
+            cls._refresh_derived(df)
+            return df
 
         # Initial fetch
         return cls._fetch_runs(experiments, max_results)
@@ -126,12 +129,15 @@ class RunsCache:
             combined_df = combined_df.unique(subset=[RUN_ID_COL], keep="first")
 
         st.session_state[cls.CACHE_KEY] = combined_df
-
-        # Update derived state
-        st.session_state["available_params"] = cls._extract_params(combined_df)
-        st.session_state["available_metrics"] = cls._extract_metrics(combined_df)
+        cls._refresh_derived(combined_df)
 
         return combined_df
+
+    @classmethod
+    def _refresh_derived(cls, df: pl.DataFrame) -> None:
+        """Recompute the session's available_params / available_metrics from `df`."""
+        st.session_state["available_params"] = cls._extract_params(df)
+        st.session_state["available_metrics"] = cls._extract_metrics(df)
 
     @classmethod
     def get_runs(cls) -> pl.DataFrame:

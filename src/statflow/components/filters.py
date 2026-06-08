@@ -159,12 +159,17 @@ def render_group_filter() -> list[str]:
     if "active_group_filters" not in st.session_state:
         st.session_state.active_group_filters = []
 
+    # Clamp stale filter entries to the currently selected groups.
+    active_default = [
+        g for g in st.session_state.active_group_filters if g in selected_groups
+    ]
+
     with st.expander("Group Filter", expanded=False, icon=":material/filter_alt:"):
         # We use st.pills for the "second level" filtering
         selected = st.pills(
             "Show only groups:",
             options=selected_groups,
-            default=st.session_state.active_group_filters,
+            default=active_default,
             format_func=NamingManager.get_group_name,
             selection_mode="multi",
             key="group_filter_widget",

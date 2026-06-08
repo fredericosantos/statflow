@@ -1,12 +1,15 @@
 """
 Experiment selection logic for get started page.
 
-This module handles the logic for selecting experiments from MLflow,
-including experiment discovery and selection UI.
+Lists experiments from the active provider and renders the selection pills.
+Persisted selections are clamped to the current options so a stale
+`.statflow_config.yaml` (or a different provider/server) never crashes the
+pills with a "default not in options" error.
 
 experiment_selector.py
+├── get_experiment_names()           # List experiments from the active provider
 ├── select_experiment()              # Handle experiment selection with custom label
-├── select_experiment_as_datasets()  # Handle experiment selection as datasets
+└── select_experiment_as_datasets()  # Handle experiment selection as datasets
 """
 
 import streamlit as st
@@ -30,10 +33,13 @@ def select_experiment_as_datasets() -> list[str] | None:
     if not experiment_names:
         return None
 
+    valid_default = [
+        d for d in st.session_state["selected_datasets"] if d in experiment_names
+    ]
     selected_datasets = st.pills(
-        "Select Datasets from MLFlow",
+        "Select Datasets",
         options=experiment_names,
-        default=st.session_state["selected_datasets"],
+        default=valid_default,
         key="dataset_selector_from_experiments",
         selection_mode="multi",
     )
@@ -60,7 +66,7 @@ def select_experiment_as_datasets() -> list[str] | None:
 
 
 def select_experiment(
-    label: str = "Select Experiments from MLFlow",
+    label: str = "Select Experiments",
 ) -> list[str] | None:
     """Handle experiment selection UI and logic.
 
@@ -75,10 +81,13 @@ def select_experiment(
         return None
 
     st.markdown(f"#### {label}")
+    valid_default = [
+        e for e in st.session_state["selected_experiments"] if e in experiment_names
+    ]
     selected_experiments = st.pills(
         label,
         options=experiment_names,
-        default=st.session_state["selected_experiments"],
+        default=valid_default,
         key="experiment_selector",
         selection_mode="multi",
         label_visibility="collapsed",

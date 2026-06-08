@@ -111,12 +111,24 @@ def handle_parameter_selection(
     available_params = st.session_state["available_params"]
     selectable_params = [p for p in available_params if p != dataset_param]
 
+    if not selectable_params:
+        st.warning(
+            "No parameters available yet. Select experiments/datasets on Get Started "
+            "(and make sure runs loaded) first."
+        )
+        return None
+
     st.markdown("Select parameters to include in comparisons and analysis:")
+
+    # Clamp the persisted default to the currently available params so a stale
+    # config never produces a "default not in options" error.
+    saved_params = st.session_state.get("selected_params") or selectable_params
+    default_params = [p for p in saved_params if p in selectable_params]
 
     selected_params = st.pills(
         "Parameters",
         options=selectable_params,
-        default=st.session_state.get("selected_params", selectable_params),
+        default=default_params,
         key="parameter_selector",
         selection_mode="multi",
         on_change=reset_active_group_filters,
