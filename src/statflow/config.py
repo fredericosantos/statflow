@@ -71,6 +71,7 @@ PERSISTABLE_KEYS = [
     "comparison_decimals",
     # Application settings
     "app_name",
+    "provider",
     "mlflow_server_url",
     # Visualization settings
     "show_error_bars",
@@ -136,6 +137,7 @@ DEFAULT_STATE: dict[str, Any] = {
     "points_display": "outliers",
     # Application settings
     "app_name": "Experiment Viewer",
+    "provider": "mlflow",
     "mlflow_server_url": MLFLOW_TRACKING_URI,
 }
 

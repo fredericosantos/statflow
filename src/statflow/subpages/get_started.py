@@ -14,7 +14,6 @@ Usage:
 """
 
 import streamlit as st
-import mlflow
 
 from statflow.config import SessionState
 from statflow.pages_modules.module_get_started import (
@@ -27,7 +26,6 @@ from statflow.shared.server_status import ServerStatusManager
 
 def main():
     SessionState.initialize()
-    mlflow.set_tracking_uri(st.session_state["mlflow_server_url"])
 
     st.set_page_config(
         page_title=st.session_state["app_name"],

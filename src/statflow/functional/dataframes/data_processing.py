@@ -13,7 +13,7 @@ data_processing.py
 import polars as pl
 import streamlit as st
 
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.runs_cache import RunsCache
 
 
 def calculate_pareto_front(df: pl.DataFrame, x_col: str, y_col: str) -> pl.DataFrame:

@@ -20,7 +20,7 @@ from statflow.components.selection_ui import (
     render_item_ordering,
     render_renaming_ui,
 )
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.runs_cache import RunsCache
 from statflow.config import SessionState
 from .constants import DatasetParamMode
 

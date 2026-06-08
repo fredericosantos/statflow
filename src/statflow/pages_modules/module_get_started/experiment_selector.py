@@ -11,8 +11,13 @@ experiment_selector.py
 
 import streamlit as st
 
-from statflow.loggers.mlflow.mlflow_client import get_experiment_names
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.registry import get_provider
+from statflow.loggers.runs_cache import RunsCache
+
+
+def get_experiment_names() -> list[str]:
+    """List selectable experiments from the active provider."""
+    return get_provider(st.session_state["provider"]).list_experiments()
 
 
 def select_experiment_as_datasets() -> list[str] | None:

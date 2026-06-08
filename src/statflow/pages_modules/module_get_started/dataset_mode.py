@@ -19,7 +19,7 @@ from statflow.pages_modules.module_get_started.experiment_selector import (
 from statflow.pages_modules.module_get_started.dataset_config import (
     handle_dataset_selection,
 )
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.runs_cache import RunsCache
 from .constants import DatasetParamMode
 
 
