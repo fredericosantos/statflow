@@ -5,7 +5,7 @@ project:
 repositories:
     - fredericosantos/statflow
 defaults:
-    priority: medium
+    priority: p2 medium
     status: backlog
     labels:
         - pm-tracked
@@ -37,7 +37,7 @@ triage:
             labels:
                 - pm-tracked
             fields:
-                priority: p1
+                priority: p1 high
                 status: backlog
         interactive:
             status: true
