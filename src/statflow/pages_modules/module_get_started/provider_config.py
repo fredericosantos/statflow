@@ -10,14 +10,39 @@ provider_config.py
 ├── render_provider_config()   # sidebar: provider picker + connection settings
 ├── _switch_provider()         # apply a provider change and reset scoped state
 ├── _mlflow_connection()       # MLflow tracking-URI input
-└── _wandb_connection()        # W&B entity input
+├── _wandb_connection()        # W&B entity input
+├── _render_reset()            # "Reset selections" button
+└── _reset_selections()        # wipe saved selections, keep connection settings
 """
+
+import copy
 
 import streamlit as st
 
-from statflow.config import SessionState
+from statflow.config import DEFAULT_STATE, SessionState
 from statflow.loggers.registry import available_providers, get_provider
 from statflow.loggers.runs_cache import RunsCache
+
+# Keys kept across a "Reset selections": connection + global display prefs.
+# Everything else in DEFAULT_STATE (selections, filters, renames, comparison
+# choices, caches) is restored to its default and re-saved.
+_PRESERVE_ON_RESET = {
+    "provider",
+    "mlflow_server_url",
+    "wandb_entity",
+    "app_name",
+    "max_results",
+    "historical_max_run_count",
+    "show_mean",
+    "show_median",
+    "show_std",
+    "show_count",
+    "show_error_bars",
+    "use_custom_colors",
+    "custom_colors",
+    "custom_symbols",
+    "points_display",
+}
 
 # Selection state that only makes sense for one backend; reset on provider switch
 # so stale values never become invalid widget defaults.
@@ -59,6 +84,8 @@ def render_provider_config() -> None:
                 _mlflow_connection()
             elif current == "wandb":
                 _wandb_connection()
+
+            _render_reset()
 
 
 def _switch_provider(name: str) -> None:
@@ -102,3 +129,28 @@ def _wandb_connection() -> None:
         RunsCache.clear_cache()
         SessionState.save_key_to_config("wandb_entity")
         st.rerun()
+
+
+def _render_reset() -> None:
+    """Button to wipe saved selections (keeps connection settings)."""
+    if st.button(
+        "Reset selections",
+        icon=":material/restart_alt:",
+        width="stretch",
+        help="Clear saved experiments, datasets, params, groups, metrics, filters, "
+        "renames, and comparison choices (keeps your provider/connection). Use this "
+        "when pages come up empty after switching data source — usually stale state "
+        "in .statflow_config.yaml from a previous setup.",
+    ):
+        _reset_selections()
+
+
+def _reset_selections() -> None:
+    """Restore every non-connection key to its default and persist the clean state."""
+    RunsCache.clear_cache()
+    st.session_state.pop("server_running", None)
+    for key, default in DEFAULT_STATE.items():
+        if key not in _PRESERVE_ON_RESET:
+            st.session_state[key] = copy.deepcopy(default)
+    SessionState.save_to_config()
+    st.rerun()
