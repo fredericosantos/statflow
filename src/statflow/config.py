@@ -73,6 +73,7 @@ PERSISTABLE_KEYS = [
     "app_name",
     "provider",
     "mlflow_server_url",
+    "wandb_entity",
     # Visualization settings
     "show_error_bars",
     "show_mean",
@@ -139,6 +140,7 @@ DEFAULT_STATE: dict[str, Any] = {
     "app_name": "Experiment Viewer",
     "provider": "mlflow",
     "mlflow_server_url": MLFLOW_TRACKING_URI,
+    "wandb_entity": "",  # empty -> use the viewer's default W&B entity
 }
 
 
