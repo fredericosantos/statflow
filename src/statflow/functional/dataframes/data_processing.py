@@ -2,12 +2,12 @@
 Data processing utilities for experiment results.
 
 This module contains functions for transforming, labeling, and processing
-experiment data from the cached MLflow runs.
+experiment data from the cached (provider-agnostic) runs.
 
 data_processing.py
 ├── calculate_pareto_front()        # Calculate Pareto front for points
-├── get_dataset_info()              # Get dataset sample/feature counts
-└── fetch_experiment_data()         # Fetch filtered experiment data from cache
+├── fetch_experiment_data()         # Fetch filtered experiment data from cache
+└── apply_metric_filters()          # Apply saved metric range/NaN filters
 """
 
 import polars as pl
