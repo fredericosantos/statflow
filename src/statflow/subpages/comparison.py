@@ -57,9 +57,17 @@ def perform_statistical_tests(
     their_groups: list[str],
     metric: str,
     group_col: str = "group_label",
+    maximize: bool = False,
 ) -> dict[str, dict]:
-    """Perform Wilcoxon rank-sum tests (one vs all)."""
+    """Mann-Whitney U (Wilcoxon rank-sum) one-vs-all, one-sided by direction.
+
+    `maximize=False` (default) treats lower values as better (e.g. error/loss);
+    `maximize=True` treats higher values as better (e.g. accuracy/R^2). The
+    test's one-sided alternative and the median comparison both follow it.
+    """
     results = {}
+
+    alternative = "greater" if maximize else "less"
 
     our_data = (
         raw_data.filter(pl.col(group_col) == our_group)
@@ -86,10 +94,14 @@ def perform_statistical_tests(
             continue
 
         try:
-            stat, pval = stats.mannwhitneyu(our_data, their_data, alternative="less")
+            stat, pval = stats.mannwhitneyu(
+                our_data, their_data, alternative=alternative
+            )
             our_median = np.median(our_data)
             their_median = np.median(their_data)
-            our_is_better = our_median < their_median
+            our_is_better = (
+                our_median > their_median if maximize else our_median < their_median
+            )
 
             p_values.append(pval)
             group_names.append(their_group)
@@ -115,11 +127,14 @@ def check_significance(
     focused_group: str,
     competitor_groups: list[str],
     metric: str,
+    maximize: bool = False,
 ) -> bool:
     """Check if focused_group is significantly better than ALL competitor_groups."""
     if not competitor_groups:
         return False
-    res = perform_statistical_tests(raw_data, focused_group, competitor_groups, metric)
+    res = perform_statistical_tests(
+        raw_data, focused_group, competitor_groups, metric, maximize=maximize
+    )
     if not res:
         return False
     return all(
@@ -135,6 +150,7 @@ def build_comparison_table(
     agg_type: str,
     our_groups: list[str],
     their_groups: list[str],
+    maximize: bool = False,
 ) -> tuple[pl.DataFrame, dict]:
     """Build comparison table with aggregated results."""
     if "run_id" in metric_df.columns and "run_id" in param_df.columns:
@@ -176,7 +192,7 @@ def build_comparison_table(
             for our_group in our_groups:
                 key = f"{dataset}_{our_group}"
                 stats_results[key] = perform_statistical_tests(
-                    dataset_data, our_group, their_groups, metric
+                    dataset_data, our_group, their_groups, metric, maximize=maximize
                 )
 
     return agg_df, stats_results, combined
@@ -274,6 +290,35 @@ def format_cell(
     if is_significant:
         formatted += " 🥇"
     return formatted
+
+
+def _render_direction_control(metric: str | None) -> bool:
+    """Per-metric "better is lower/higher" control; returns whether to maximize.
+
+    Remembers each metric's direction in the persisted `metric_directions` map,
+    so error-like metrics stay "Lower" and score-like metrics stay "Higher"
+    across sessions without re-picking.
+    """
+    if not metric:
+        return False
+
+    directions = st.session_state["metric_directions"]
+    default = directions.get(metric, "Lower")
+    choice = st.pills(
+        "Better is",
+        options=["Lower", "Higher"],
+        default=default,
+        selection_mode="single",
+        key=f"comparison_direction_{metric}",
+    )
+    choice = choice or default
+
+    if directions.get(metric) != choice:
+        directions[metric] = choice
+        st.session_state["metric_directions"] = directions
+        SessionState.save_key_to_config("metric_directions")
+
+    return choice == "Higher"
 
 
 def main():
@@ -381,8 +426,8 @@ def main():
 
     st.divider()
 
-    # Metric, aggregation, decimals, pivot
-    cols = st.columns([5, 2, 1, 1], vertical_alignment="center")
+    # Metric, aggregation, direction, decimals
+    cols = st.columns([4, 2, 2, 1], vertical_alignment="center")
 
     def format_metric(m):
         return NamingManager.get_metric_name(m)
@@ -407,6 +452,9 @@ def main():
         )
 
     with cols[2]:
+        maximize = _render_direction_control(comparison_metric)
+
+    with cols[3]:
         decimals = st.number_input(
             "Decimals",
             min_value=0,
@@ -415,9 +463,6 @@ def main():
             step=1,
             key="comparison_decimals",
         )
-
-    # with cols[3]:
-    #     pivot_table = st.toggle("Pivot", value=False, key="comparison_pivot")
 
     if not comparison_metric:
         st.info("Select a metric to compare.")
@@ -457,7 +502,8 @@ def main():
 
     # Build comparison table
     agg_df, stats_results, combined_data = build_comparison_table(
-        metric_df, param_df, comparison_metric, agg_type, our_groups, their_groups
+        metric_df, param_df, comparison_metric, agg_type, our_groups, their_groups,
+        maximize=maximize,
     )
 
     if agg_df.is_empty():
@@ -468,8 +514,11 @@ def main():
     agg_df = agg_df.filter(pl.col("dataset_name").is_in(datasets_to_show))
 
     # Display legend
+    better = "higher" if maximize else "lower"
     st.caption(
-        "🥇 = Significantly better than ALL baselines (Wilcoxon rank-sum, Holm-Bonferroni, α=0.05)"
+        f"🥇 = Significantly better than ALL baselines — {better} "
+        f"{NamingManager.get_metric_name(comparison_metric)} "
+        "(Wilcoxon rank-sum, Holm-Bonferroni, α=0.05)"
     )
 
     # Build display table
@@ -556,8 +605,7 @@ def main():
         format_func=format_group,
         label_visibility="collapsed",
     )
-    full_display_df = pl.DataFrame(display_data)
-    
+
     if our_method:
         # Re-calculate display data for the focused view to include mutual trophies
         focused_display_data = []
@@ -589,7 +637,10 @@ def main():
                         
                         # Check significance vs other visible methods
                         competitors = [m for m in visible_methods if m != method]
-                        is_sig = check_significance(dataset_data_raw, method, competitors, comparison_metric)
+                        is_sig = check_significance(
+                            dataset_data_raw, method, competitors, comparison_metric,
+                            maximize=maximize,
+                        )
                         
                         if value is not None:
                             row_data[display_name] = format_cell(value, spread, decimals, is_sig)

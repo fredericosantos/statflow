@@ -69,6 +69,7 @@ PERSISTABLE_KEYS = [
     "comparison_dataset_filter",
     "comparison_our_groups",
     "comparison_decimals",
+    "metric_directions",
     # Application settings
     "app_name",
     "provider",
@@ -126,6 +127,7 @@ DEFAULT_STATE: dict[str, Any] = {
     "comparison_dataset_filter": [],
     "comparison_our_groups": [],
     "comparison_decimals": 4,
+    "metric_directions": {},  # {metric: "Minimize"|"Maximize"} — better-is direction
     # Visualization settings
     "show_mean": True,
     "show_median": False,
