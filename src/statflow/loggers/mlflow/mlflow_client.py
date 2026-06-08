@@ -5,7 +5,7 @@ This module provides functions for connecting to MLflow and retrieving
 experiment names. Run data fetching is handled by runs_cache.py.
 
 mlflow_client.py
-├── get_experiment_names()  # Get list of available experiment names
+└── get_experiment_names()  # Get list of available experiment names
 """
 
 import mlflow

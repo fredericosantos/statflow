@@ -20,7 +20,6 @@ from statflow.functional.dataframes.data_processing import fetch_experiment_data
 st.set_page_config(
     page_title=f"Parameters - {st.session_state['app_name']}",
     page_icon=":material/tune:",
-    layout="wide",
 )
 
 
@@ -60,9 +59,7 @@ def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
                     label_visibility="collapsed",
                 )
             with col2:
-                submitted = st.form_submit_button(
-                    "Add Filter", width='content'
-                )
+                submitted = st.form_submit_button("Add Filter", width="content")
 
             if submitted and new_filter:
                 if new_filter not in st.session_state.active_param_filters:
@@ -88,7 +85,9 @@ def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
                 key=f"filter_{param}",
             )
         with remove_col:
-            if st.button("✕", key=f"remove_filter_{param}", help=f"Remove {param} filter"):
+            if st.button(
+                "✕", key=f"remove_filter_{param}", help=f"Remove {param} filter"
+            ):
                 st.session_state.active_param_filters.remove(param)
                 st.rerun()
 
@@ -98,10 +97,17 @@ def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
     return filtered_df
 
 
+def reset_active_group_filters():
+    """Reset the transient group filter session state."""
+    st.session_state.active_group_filters = []
+
+
 def handle_parameter_selection(
     selected_experiments: list[str], dataset_param: str
 ) -> list[str] | None:
     """Handle parameter selection UI."""
+    from statflow.components.selection_ui import render_item_ordering
+    
     available_params = st.session_state["available_params"]
     selectable_params = [p for p in available_params if p != dataset_param]
 
@@ -113,9 +119,20 @@ def handle_parameter_selection(
         default=st.session_state.get("selected_params", selectable_params),
         key="parameter_selector",
         selection_mode="multi",
+        on_change=reset_active_group_filters,
     )
 
     st.session_state.selected_params = selected_params
+    
+    if selected_params:
+        # Allow reordering of selected parameters
+        selected_params = render_item_ordering(
+            items=selected_params,
+            session_key="selected_params", # Use same key to overwrite order
+            label="Order parameters",
+            key_suffix="_param_order",
+        )
+    
     return selected_params
 
 
@@ -159,9 +176,8 @@ def main():
     if not comparison_params:
         return
 
-    # Parameter Filters - moved before Group Selection
     with st.expander(
-        "Parameter Filters", expanded=False, icon=":material/filter_list:"
+        "Filters", expanded=False, icon=":material/filter_list:"
     ):
         st.markdown("Add filters to focus on specific parameter values:")
         param_df = render_parameter_filters(param_df)
@@ -192,7 +208,7 @@ def main():
 
     # Use SelectionManager for group selection with caching
     from statflow.components.selection_ui import SelectionManager
-    
+
     manager = SelectionManager(
         options=available_groups,
         session_key="selected_groups",
@@ -203,6 +219,7 @@ def main():
         use_fragment=True,
         cache_key=sorted_cache_key,
         cache_param_order=comparison_params,
+        on_change=reset_active_group_filters,
     )
     manager.render()
 
@@ -212,6 +229,20 @@ def main():
         param_df = param_df.filter(
             pl.col("group_label").is_in(st.session_state["selected_groups"])
         )
+
+    # Navigation to next page
+    st.space()
+    _, col_next = st.columns([6, 1])
+    with col_next:
+        if st.button(
+            "Next",
+            type="primary",
+            key="next_to_metrics",
+            icon=":material/arrow_forward:",
+            icon_position="right",
+            width="content",
+        ):
+            st.switch_page("subpages/metrics.py")
 
 
 if __name__ == "__main__":

@@ -38,7 +38,11 @@ def select_experiment_as_datasets() -> list[str] | None:
 
     # Also update experiments for metadata
     selected_experiments = selected_datasets
-    if selected_experiments != st.session_state["selected_experiments"]:
+    # Load if selection changed OR if we have selection but no data (initial load)
+    if (
+        selected_experiments != st.session_state["selected_experiments"]
+        or (selected_experiments and RunsCache.get_run_count() == 0)
+    ):
         st.session_state.selected_experiments = selected_experiments
         # Clear cache and load initial batch
         RunsCache.clear_cache()
@@ -65,21 +69,28 @@ def select_experiment(
     if not experiment_names:
         return None
 
+    st.markdown(f"#### {label}")
     selected_experiments = st.pills(
         label,
         options=experiment_names,
         default=st.session_state["selected_experiments"],
         key="experiment_selector",
         selection_mode="multi",
+        label_visibility="collapsed",
     )
+    st.space()
 
     # Check if selection changed - load initial runs
-    if selected_experiments != st.session_state["selected_experiments"]:
+    # Load if selection changed OR if we have selection but no data (initial load)
+    if (
+        selected_experiments != st.session_state["selected_experiments"]
+        or (selected_experiments and RunsCache.get_run_count() == 0)
+    ):
         st.session_state.selected_experiments = selected_experiments
         # Clear cache and load initial batch
         RunsCache.clear_cache()
         if selected_experiments:
-            max_results = st.session_state.get("max_results", 2000)
+            max_results = st.session_state.get("max_results", 1000)
             with st.spinner("Loading experiment runs..."):
                 RunsCache.load_runs(selected_experiments, max_results=max_results)
 

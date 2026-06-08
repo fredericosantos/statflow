@@ -50,6 +50,7 @@ PERSISTABLE_KEYS = [
     "dataset_param",
     "dataset_renames",
     "max_results",
+    "historical_max_run_count",
     # Parameters page
     "selected_params",
     "active_param_filters",
@@ -60,7 +61,10 @@ PERSISTABLE_KEYS = [
     # Metrics page
     "selected_metrics",
     "active_metric_filters",
+    "metric_filter_values",
+    "metric_filter_nans",
     "metric_renames",
+    "plot_height",
     # Comparison page
     "comparison_dataset_filter",
     "comparison_our_groups",
@@ -77,8 +81,6 @@ PERSISTABLE_KEYS = [
     "use_custom_colors",
     "custom_colors",
     "custom_symbols",
-    "graph_width",
-    "graph_height",
     "points_display",
 ]
 
@@ -91,6 +93,7 @@ DEFAULT_STATE: dict[str, Any] = {
     # UI state (transient - not persisted)
     "zip_clicked": False,
     "zip_data": None,
+    "active_group_filters": [],
     # Get Started page
     "dataset_mode": "Dataset names are experiment names",
     "selected_experiments": [],
@@ -98,7 +101,8 @@ DEFAULT_STATE: dict[str, Any] = {
     "available_datasets": [],
     "dataset_param": "",
     "dataset_renames": {},
-    "max_results": 2000,
+    "max_results": 1000,
+    "historical_max_run_count": 0,
     # Parameters page
     "selected_params": [],
     "available_params": [],
@@ -113,6 +117,9 @@ DEFAULT_STATE: dict[str, Any] = {
     "available_metrics": [],
     "active_metric_filters": [],
     "metric_renames": {},
+    "metric_filter_values": {},
+    "metric_filter_nans": {},
+    "plot_height": 400,
     # Comparison page
     "comparison_dataset_filter": [],
     "comparison_our_groups": [],
@@ -126,8 +133,6 @@ DEFAULT_STATE: dict[str, Any] = {
     "use_custom_colors": True,
     "custom_colors": {},
     "custom_symbols": {},
-    "graph_width": 800,
-    "graph_height": 600,
     "points_display": "outliers",
     # Application settings
     "app_name": "Experiment Viewer",
@@ -202,6 +207,27 @@ class SessionState:
                 if isinstance(value, (str, int, float, bool, list, dict, type(None))):
                     config[key] = value
 
+        save_config(config)
+
+    @classmethod
+    def save_key_to_config(cls, key: str) -> None:
+        """Save a single key from session state to the configuration file."""
+        import streamlit as st
+
+        if key not in PERSISTABLE_KEYS:
+            return
+
+        if key not in st.session_state:
+            return
+
+        value = st.session_state[key]
+        # Only save serializable values
+        if not isinstance(value, (str, int, float, bool, list, dict, type(None))):
+            return
+
+        # Load existing, update, and save
+        config = load_config()
+        config[key] = value
         save_config(config)
 
     @classmethod
