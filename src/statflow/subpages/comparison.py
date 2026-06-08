@@ -151,8 +151,8 @@ def build_comparison_table(
     our_groups: list[str],
     their_groups: list[str],
     maximize: bool = False,
-) -> tuple[pl.DataFrame, dict]:
-    """Build comparison table with aggregated results."""
+) -> tuple[pl.DataFrame, dict, pl.DataFrame]:
+    """Build comparison table: (aggregated stats, per-dataset tests, joined raw rows)."""
     if "run_id" in metric_df.columns and "run_id" in param_df.columns:
         combined = metric_df.join(
             param_df.select(["run_id", "group_label", "dataset_name"]),
@@ -167,7 +167,7 @@ def build_comparison_table(
         )
 
     if combined.is_empty():
-        return pl.DataFrame(), {}
+        return pl.DataFrame(), {}, pl.DataFrame()
 
     all_groups = our_groups + their_groups
     combined = combined.filter(pl.col("group_label").is_in(all_groups))
