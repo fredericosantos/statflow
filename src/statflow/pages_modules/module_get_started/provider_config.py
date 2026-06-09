@@ -66,6 +66,11 @@ def render_provider_config() -> None:
     current = st.session_state["provider"]
     labels = {name: get_provider(name).label for name in available_providers()}
 
+    # Confirmation surfaced on the rerun triggered by _reset_selections().
+    just_reset = st.session_state.pop("_selections_reset", False)
+    if just_reset:
+        st.toast("Selections reset.", icon=":material/check_circle:")
+
     with st.sidebar:
         with st.expander("Data Source", expanded=True, icon=":material/database:"):
             chosen = st.pills(
@@ -86,6 +91,11 @@ def render_provider_config() -> None:
                 _wandb_connection()
 
             _render_reset()
+            if just_reset:
+                st.success(
+                    "Selections reset — pick experiments and datasets to start.",
+                    icon=":material/check_circle:",
+                )
 
 
 def _switch_provider(name: str) -> None:
@@ -153,4 +163,7 @@ def _reset_selections() -> None:
         if key not in _PRESERVE_ON_RESET:
             st.session_state[key] = copy.deepcopy(default)
     SessionState.save_to_config()
+    # Flag for render_provider_config to confirm on the next run (not a
+    # DEFAULT_STATE key, so the reset loop above won't clear it).
+    st.session_state["_selections_reset"] = True
     st.rerun()
