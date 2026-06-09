@@ -9,7 +9,7 @@ This module provides reusable Streamlit components for:
 components/selection_ui.py
 ├── SelectionManager                # Unified selection, ordering, renaming component
 ├── render_item_selector()          # Generic pill/multiselect for items
-├── render_deselect_all_button()    # Clear a keyed multi-select (shared)
+├── render_selection_pills()        # Controlled multi-select + Select/Deselect all
 ├── render_item_ordering()          # Generic item reordering UI
 └── render_renaming_ui()            # Generic renaming UI
 """
@@ -80,10 +80,6 @@ class SelectionManager:
     
     def _compute_default(self) -> list[str]:
         """Compute default selection, using cache if available."""
-        # One-shot empty default right after a "Deselect all" click.
-        if pop_deselect_flag(self.session_key):
-            return []
-
         if not self.cache_key:
             # No caching - use session state or all options
             current = st.session_state.get(self.session_key)
@@ -274,53 +270,97 @@ def render_item_selector(
     return selected_items
 
 
-def _deselect_flag_key(session_key: str) -> str:
-    return f"_deselect_{session_key}"
-
-
-def pop_deselect_flag(session_key: str) -> bool:
-    """Consume the one-shot "deselect all" flag for ``session_key``.
-
-    Returns True exactly once on the render following a Deselect-all click, so
-    the caller can force an empty default instead of its usual one.
-    """
-    return bool(st.session_state.pop(_deselect_flag_key(session_key), False))
-
-
-def render_deselect_all_button(
+def render_selection_pills(
+    options: list[str],
     session_key: str,
-    widget_key: str,
     *,
-    label: str = "Deselect all",
-) -> None:
-    """Render a button that clears a multi-select pills widget.
+    label: str,
+    format_func: Callable[[str], str] | None = None,
+    on_change: Callable | None = None,
+    label_visibility: str = "visible",
+) -> list[str]:
+    """Controlled multi-select pills with Select all / Deselect all.
 
-    The on_click callback clears the stored selection (``session_key``),
-    **deletes** the pills widget's own state (``widget_key``), and raises a
-    one-shot flag. Deleting the widget key (rather than assigning it) avoids
-    Streamlit's "default value but also set via Session State" warning; the flag
-    tells the next render to seed an empty default via ``pop_deselect_flag``.
-    Shared by any page driven by a keyed multi-select (Parameters, Metrics, ...).
+    Selection lives entirely in the widget's own key (``sel_<session_key>``) and
+    no ``default=`` is passed, which is the Streamlit-blessed "controlled widget"
+    pattern: it avoids the "default value but also set via Session State"
+    warning and lets the action buttons set the selection directly (reliably).
+
+    The key is seeded once (all options selected) and clamped to the current
+    options each render, so a stale config never crashes the widget. The result
+    is mirrored into ``session_key`` and persisted. Returns the selected items.
 
     Args:
-        session_key: Session-state key holding the selected items.
-        widget_key: The ``key`` of the pills widget itself (e.g.
-            ``"parameter_selector"`` or ``"selector_selected_metrics"``).
-        label: Button label.
+        options: Available options.
+        session_key: Session-state key to mirror the selection into.
+        label: Pills label.
+        format_func: Optional display formatter for each option.
+        on_change: Optional callback fired on any selection change (manual or
+            via the action buttons).
+        label_visibility: Passed through to ``st.pills``.
     """
+    if not options:
+        return []
 
-    def _clear() -> None:
-        st.session_state[session_key] = []
-        st.session_state.pop(widget_key, None)
-        st.session_state[_deselect_flag_key(session_key)] = True
-        SessionState.save_to_config()
+    widget_key = f"sel_{session_key}"
 
-    st.button(
-        label,
+    # Seed once (all selected), else clamp the existing selection to the current
+    # options. Both happen *before* the widget is instantiated, so no warning.
+    if widget_key not in st.session_state:
+        saved = st.session_state.get(session_key)
+        st.session_state[widget_key] = (
+            [x for x in saved if x in options] if saved else list(options)
+        )
+    else:
+        st.session_state[widget_key] = [
+            x for x in st.session_state[widget_key] if x in options
+        ]
+
+    def _select_all() -> None:
+        st.session_state[widget_key] = list(options)
+        if on_change:
+            on_change()
+
+    def _deselect_all() -> None:
+        st.session_state[widget_key] = []
+        if on_change:
+            on_change()
+
+    col_sel, col_desel, _ = st.columns([1, 1, 4], vertical_alignment="center")
+    col_sel.button(
+        "Select all",
+        icon=":material/select_all:",
+        key=f"select_all_{session_key}",
+        on_click=_select_all,
+        width="stretch",
+    )
+    col_desel.button(
+        "Deselect all",
         icon=":material/deselect:",
         key=f"deselect_all_{session_key}",
-        on_click=_clear,
+        on_click=_deselect_all,
+        width="stretch",
     )
+
+    selected = st.pills(
+        label,
+        options=options,
+        key=widget_key,
+        selection_mode="multi",
+        format_func=format_func or (lambda x: x),
+        label_visibility=label_visibility,
+        on_change=on_change,
+    )
+    selected = list(selected or [])
+
+    # Mirror into session_key when the *set* changes — an order-only difference
+    # (e.g. from a downstream "order items" step writing session_key) is left
+    # intact rather than clobbered by the pills' ordering.
+    if set(st.session_state.get(session_key) or []) != set(selected):
+        st.session_state[session_key] = selected
+        SessionState.save_to_config()
+
+    return selected
 
 
 def render_item_ordering(

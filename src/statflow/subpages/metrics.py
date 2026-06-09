@@ -175,10 +175,11 @@ def main():
         st.warning("Please select datasets first in Get Started.")
         return
 
-    # Metric Selection using SelectionManager
+    # Metric Selection (controlled pills + Select/Deselect all, then order/rename)
     from statflow.components.selection_ui import (
-        SelectionManager,
-        render_deselect_all_button,
+        render_item_ordering,
+        render_renaming_ui,
+        render_selection_pills,
     )
 
     available_metrics = st.session_state.get("available_metrics", [])
@@ -186,16 +187,28 @@ def main():
         st.warning("No metrics found. Please load experiment data first.")
         return
 
-    manager = SelectionManager(
-        options=available_metrics,
-        session_key="selected_metrics",
-        label="Metric Selection",
-        enable_ordering=True,
-        enable_renaming=True,
-        renames_session_key="metric_renames",
-    )
-    manager.render()
-    render_deselect_all_button("selected_metrics", "selector_selected_metrics")
+    with st.expander("Metric Selection", expanded=True, icon=":material/category:"):
+        selected_metrics = render_selection_pills(
+            available_metrics,
+            "selected_metrics",
+            label="Metric Selection",
+            format_func=NamingManager.get_metric_name,
+            label_visibility="collapsed",
+        )
+
+    if selected_metrics:
+        selected_metrics = render_item_ordering(
+            items=selected_metrics,
+            session_key="selected_metrics",
+            label="Order Metrics",
+            key_suffix="_metric_order",
+            renames_session_key="metric_renames",
+        )
+        render_renaming_ui(
+            items=selected_metrics,
+            session_key_renames="metric_renames",
+            label="Rename Metrics",
+        )
 
     selected_metrics = st.session_state.get("selected_metrics", [])
     if not selected_metrics:
