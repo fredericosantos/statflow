@@ -176,7 +176,10 @@ def main():
         return
 
     # Metric Selection using SelectionManager
-    from statflow.components.selection_ui import SelectionManager
+    from statflow.components.selection_ui import (
+        SelectionManager,
+        render_deselect_all_button,
+    )
 
     available_metrics = st.session_state.get("available_metrics", [])
     if not available_metrics:
@@ -192,6 +195,7 @@ def main():
         renames_session_key="metric_renames",
     )
     manager.render()
+    render_deselect_all_button("selected_metrics", "selector_selected_metrics")
 
     selected_metrics = st.session_state.get("selected_metrics", [])
     if not selected_metrics:

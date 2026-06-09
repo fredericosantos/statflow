@@ -106,8 +106,12 @@ def handle_parameter_selection(
     selected_experiments: list[str], dataset_param: str
 ) -> list[str] | None:
     """Handle parameter selection UI."""
-    from statflow.components.selection_ui import render_item_ordering
-    
+    from statflow.components.selection_ui import (
+        pop_deselect_flag,
+        render_deselect_all_button,
+        render_item_ordering,
+    )
+
     available_params = st.session_state["available_params"]
     selectable_params = [p for p in available_params if p != dataset_param]
 
@@ -121,9 +125,13 @@ def handle_parameter_selection(
     st.markdown("Select parameters to include in comparisons and analysis:")
 
     # Clamp the persisted default to the currently available params so a stale
-    # config never produces a "default not in options" error.
-    saved_params = st.session_state.get("selected_params") or selectable_params
-    default_params = [p for p in saved_params if p in selectable_params]
+    # config never produces a "default not in options" error. A "Deselect all"
+    # click forces an empty default for one render (see render_deselect_all_button).
+    if pop_deselect_flag("selected_params"):
+        default_params = []
+    else:
+        saved_params = st.session_state.get("selected_params") or selectable_params
+        default_params = [p for p in saved_params if p in selectable_params]
 
     selected_params = st.pills(
         "Parameters",
@@ -133,6 +141,8 @@ def handle_parameter_selection(
         selection_mode="multi",
         on_change=reset_active_group_filters,
     )
+
+    render_deselect_all_button("selected_params", "parameter_selector")
 
     st.session_state.selected_params = selected_params
     

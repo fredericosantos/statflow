@@ -9,6 +9,7 @@ This module provides reusable Streamlit components for:
 components/selection_ui.py
 ├── SelectionManager                # Unified selection, ordering, renaming component
 ├── render_item_selector()          # Generic pill/multiselect for items
+├── render_deselect_all_button()    # Clear a keyed multi-select (shared)
 ├── render_item_ordering()          # Generic item reordering UI
 └── render_renaming_ui()            # Generic renaming UI
 """
@@ -79,6 +80,10 @@ class SelectionManager:
     
     def _compute_default(self) -> list[str]:
         """Compute default selection, using cache if available."""
+        # One-shot empty default right after a "Deselect all" click.
+        if pop_deselect_flag(self.session_key):
+            return []
+
         if not self.cache_key:
             # No caching - use session state or all options
             current = st.session_state.get(self.session_key)
@@ -265,8 +270,57 @@ def render_item_selector(
     if st.session_state.get(session_key) != selected_items:
         st.session_state[session_key] = selected_items
         SessionState.save_to_config()
-        
+
     return selected_items
+
+
+def _deselect_flag_key(session_key: str) -> str:
+    return f"_deselect_{session_key}"
+
+
+def pop_deselect_flag(session_key: str) -> bool:
+    """Consume the one-shot "deselect all" flag for ``session_key``.
+
+    Returns True exactly once on the render following a Deselect-all click, so
+    the caller can force an empty default instead of its usual one.
+    """
+    return bool(st.session_state.pop(_deselect_flag_key(session_key), False))
+
+
+def render_deselect_all_button(
+    session_key: str,
+    widget_key: str,
+    *,
+    label: str = "Deselect all",
+) -> None:
+    """Render a button that clears a multi-select pills widget.
+
+    The on_click callback clears the stored selection (``session_key``),
+    **deletes** the pills widget's own state (``widget_key``), and raises a
+    one-shot flag. Deleting the widget key (rather than assigning it) avoids
+    Streamlit's "default value but also set via Session State" warning; the flag
+    tells the next render to seed an empty default via ``pop_deselect_flag``.
+    Shared by any page driven by a keyed multi-select (Parameters, Metrics, ...).
+
+    Args:
+        session_key: Session-state key holding the selected items.
+        widget_key: The ``key`` of the pills widget itself (e.g.
+            ``"parameter_selector"`` or ``"selector_selected_metrics"``).
+        label: Button label.
+    """
+
+    def _clear() -> None:
+        st.session_state[session_key] = []
+        st.session_state.pop(widget_key, None)
+        st.session_state[_deselect_flag_key(session_key)] = True
+        SessionState.save_to_config()
+
+    st.button(
+        label,
+        icon=":material/deselect:",
+        key=f"deselect_all_{session_key}",
+        on_click=_clear,
+    )
 
 
 def render_item_ordering(
