@@ -53,9 +53,7 @@ def render_pills_filter(
 
     # Get default from session state
     default_values = (
-        st.session_state[session_key]
-        if session_key in st.session_state
-        else tuple(options)
+        st.session_state[session_key] if session_key in st.session_state else tuple(options)
     )
 
     if selection_mode == "single":
@@ -133,9 +131,7 @@ def render_dataset_selector(
         )
         return tuple(selected) if selected else None
     else:
-        raise ValueError(
-            f"Invalid selection_mode: {selection_mode}. Must be 'single' or 'multi'."
-        )
+        raise ValueError(f"Invalid selection_mode: {selection_mode}. Must be 'single' or 'multi'.")
 
 
 def render_group_filter() -> list[str]:
@@ -160,9 +156,7 @@ def render_group_filter() -> list[str]:
         st.session_state.active_group_filters = []
 
     # Clamp stale filter entries to the currently selected groups.
-    active_default = [
-        g for g in st.session_state.active_group_filters if g in selected_groups
-    ]
+    active_default = [g for g in st.session_state.active_group_filters if g in selected_groups]
 
     with st.expander("Group Filter", expanded=False, icon=":material/filter_alt:"):
         # We use st.pills for the "second level" filtering
@@ -176,17 +170,17 @@ def render_group_filter() -> list[str]:
             help="Sub-select groups from those chosen on the Parameters page.",
             label_visibility="collapsed",
         )
-        
+
         # Update transient session state
         st.session_state.active_group_filters = selected
-        
+
         # We ensure the return value respects the original order of selected_groups
         # because st.pills returns items in the order they were clicked.
         if not selected:
-             return selected_groups
-             
+            return selected_groups
+
         # Sort selection by original index
         order_map = {g: i for i, g in enumerate(selected_groups)}
         sorted_selection = sorted(selected, key=lambda x: order_map.get(x, 999))
-        
+
         return sorted_selection

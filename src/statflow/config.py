@@ -21,7 +21,6 @@ from typing import Any
 
 import yaml
 
-
 # ==============================================================================
 # Core Constants
 # ==============================================================================
@@ -240,24 +239,28 @@ class SessionState:
     def get(cls, key: str, default: Any = None) -> Any:
         """Get value from session state."""
         import streamlit as st
+
         return st.session_state.get(key, default)
 
     @classmethod
     def set(cls, key: str, value: Any) -> None:
         """Set value in session state."""
         import streamlit as st
+
         st.session_state[key] = value
 
     @classmethod
     def has(cls, key: str) -> bool:
         """Check if key exists in session state."""
         import streamlit as st
+
         return key in st.session_state
 
     @classmethod
     def update(cls, **kwargs: Any) -> None:
         """Update multiple session state values."""
         import streamlit as st
+
         for key, value in kwargs.items():
             st.session_state[key] = value
 

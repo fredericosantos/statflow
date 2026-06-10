@@ -12,14 +12,15 @@ dataset_mode.py
 
 import streamlit as st
 
+from statflow.loggers.runs_cache import RunsCache
+from statflow.pages_modules.module_get_started.dataset_config import (
+    handle_dataset_selection,
+)
 from statflow.pages_modules.module_get_started.experiment_selector import (
     select_experiment,
     select_experiment_as_datasets,
 )
-from statflow.pages_modules.module_get_started.dataset_config import (
-    handle_dataset_selection,
-)
-from statflow.loggers.runs_cache import RunsCache
+
 from .constants import DatasetParamMode
 
 
@@ -27,13 +28,13 @@ def render_dataset_mode_and_selections():
     """Main entry point for dataset mode selection and related flows."""
     st.markdown("#### Dataset Mode")
     st.caption("Choose how datasets are identified in your experiments")
-    
+
     options = [
         ":material/folder: By Experiment",
         ":material/description: Single Dataset",
         ":material/tune: By Parameter",
     ]
-    
+
     # Map display options to internal values
     mode_map = {
         ":material/folder: By Experiment": "experiment",
@@ -52,9 +53,9 @@ def render_dataset_mode_and_selections():
         selection_mode="single",
         key="dataset_mode_pills",
         label_visibility="collapsed",
-        width="stretch"
+        width="stretch",
     )
-    
+
     dataset_mode = mode_map.get(dataset_mode_display, "experiment")
     st.session_state["dataset_mode"] = dataset_mode
 
@@ -72,16 +73,12 @@ def render_dataset_mode_and_selections():
             st.info("Please select at least one experiment to proceed.")
             return None, None, None
 
-        dataset_param = handle_dataset_parameter_selection(
-            selected_experiments, dataset_mode
-        )
+        dataset_param = handle_dataset_parameter_selection(selected_experiments, dataset_mode)
         if not dataset_param:
             st.info("Please select a dataset parameter to proceed.")
             return None, None, None
 
-        selected_datasets = handle_dataset_selection(
-            selected_experiments, dataset_param
-        )
+        selected_datasets = handle_dataset_selection(selected_experiments, dataset_param)
 
     return selected_experiments, selected_datasets, dataset_param
 

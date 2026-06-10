@@ -15,7 +15,7 @@ from typing import Any
 import polars as pl
 import pytest
 
-from statflow.loggers.base import METRIC_PREFIX, PARAM_PREFIX, RUN_ID_COL
+from statflow.loggers.base import RUN_ID_COL
 
 
 class _FakeSessionState(dict):
@@ -30,7 +30,7 @@ class _FakeSessionState(dict):
     def __setattr__(self, name: str, value: Any) -> None:
         self[name] = value
 
-    def get(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+    def get(self, key: str, default: Any = None) -> Any:
         return dict.get(self, key, default)
 
 
@@ -62,7 +62,6 @@ class _FakeProvider:
 def patched_cache(monkeypatch):
     """Patch st.session_state and get_provider so RunsCache uses our fakes."""
     import streamlit as st
-    from statflow.loggers import runs_cache as rc_module
 
     fake_state = _FakeSessionState(provider="fake")
     monkeypatch.setattr(st, "session_state", fake_state)
@@ -163,12 +162,14 @@ def test_derived_params_refreshed_after_load(patched_cache, monkeypatch):
 
 def test_filter_by_datasets(patched_cache, monkeypatch):
     """filter_by_datasets filters rows by a params.* column."""
-    df = pl.DataFrame({
-        "run_id": ["r1", "r2", "r3"],
-        "start_time": [None, None, None],
-        "params.dataset": ["ds_a", "ds_b", "ds_a"],
-        "metrics.loss": [0.1, 0.2, 0.3],
-    })
+    df = pl.DataFrame(
+        {
+            "run_id": ["r1", "r2", "r3"],
+            "start_time": [None, None, None],
+            "params.dataset": ["ds_a", "ds_b", "ds_a"],
+            "metrics.loss": [0.1, 0.2, 0.3],
+        }
+    )
     _install_fake_provider(monkeypatch, df)
     from statflow.loggers.runs_cache import RunsCache
 

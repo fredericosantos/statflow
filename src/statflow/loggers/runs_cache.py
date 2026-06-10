@@ -65,10 +65,7 @@ class RunsCache:
 
         # If already have data, return it (re-deriving params/metrics in case the
         # session lost them, e.g. after a provider switch or a fresh page load).
-        if (
-            cls.CACHE_KEY in st.session_state
-            and not st.session_state[cls.CACHE_KEY].is_empty()
-        ):
+        if cls.CACHE_KEY in st.session_state and not st.session_state[cls.CACHE_KEY].is_empty():
             df = st.session_state[cls.CACHE_KEY]
             cls._refresh_derived(df)
             return df
@@ -188,9 +185,7 @@ class RunsCache:
         return [v for v in values if v and str(v).strip()]
 
     @classmethod
-    def filter_by_datasets(
-        cls, dataset_param: str, datasets: list[str]
-    ) -> pl.DataFrame:
+    def filter_by_datasets(cls, dataset_param: str, datasets: list[str]) -> pl.DataFrame:
         """Filter cached runs by dataset parameter values.
 
         Args:
@@ -220,20 +215,16 @@ class RunsCache:
     @classmethod
     def _extract_params(cls, df: pl.DataFrame) -> list[str]:
         """Extract parameter names from DataFrame columns."""
-        return sorted([
-            col[len(PARAM_PREFIX) :]
-            for col in df.columns
-            if col.startswith(PARAM_PREFIX)
-        ])
+        return sorted(
+            [col[len(PARAM_PREFIX) :] for col in df.columns if col.startswith(PARAM_PREFIX)]
+        )
 
     @classmethod
     def _extract_metrics(cls, df: pl.DataFrame) -> list[str]:
         """Extract metric names from DataFrame columns."""
-        return sorted([
-            col[len(METRIC_PREFIX) :]
-            for col in df.columns
-            if col.startswith(METRIC_PREFIX)
-        ])
+        return sorted(
+            [col[len(METRIC_PREFIX) :] for col in df.columns if col.startswith(METRIC_PREFIX)]
+        )
 
     @classmethod
     def get_run_count(cls) -> int:

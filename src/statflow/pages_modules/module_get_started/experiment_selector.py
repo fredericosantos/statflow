@@ -33,26 +33,27 @@ def select_experiment_as_datasets() -> list[str] | None:
     if not experiment_names:
         return None
 
-    valid_default = [
-        d for d in st.session_state["selected_datasets"] if d in experiment_names
-    ]
-    selected_datasets = st.pills(
-        "Select Datasets",
-        options=experiment_names,
-        default=valid_default,
-        key="dataset_selector_from_experiments",
-        selection_mode="multi",
+    valid_default = [d for d in st.session_state["selected_datasets"] if d in experiment_names]
+    # st.pills with selection_mode="multi" returns list[V]; annotate to help ty.
+    selected_datasets: list[str] = (
+        st.pills(  # type: ignore[assignment]
+            "Select Datasets",
+            options=experiment_names,
+            default=valid_default,
+            key="dataset_selector_from_experiments",
+            selection_mode="multi",
+        )
+        or []
     )
 
     # Update session state
     st.session_state.selected_datasets = selected_datasets
 
     # Also update experiments for metadata
-    selected_experiments = selected_datasets
+    selected_experiments: list[str] = selected_datasets
     # Load if selection changed OR if we have selection but no data (initial load)
-    if (
-        selected_experiments != st.session_state["selected_experiments"]
-        or (selected_experiments and RunsCache.get_run_count() == 0)
+    if selected_experiments != st.session_state["selected_experiments"] or (
+        selected_experiments and RunsCache.get_run_count() == 0
     ):
         st.session_state.selected_experiments = selected_experiments
         # Clear cache and load initial batch
@@ -81,24 +82,25 @@ def select_experiment(
         return None
 
     st.markdown(f"#### {label}")
-    valid_default = [
-        e for e in st.session_state["selected_experiments"] if e in experiment_names
-    ]
-    selected_experiments = st.pills(
-        label,
-        options=experiment_names,
-        default=valid_default,
-        key="experiment_selector",
-        selection_mode="multi",
-        label_visibility="collapsed",
+    valid_default = [e for e in st.session_state["selected_experiments"] if e in experiment_names]
+    # st.pills with selection_mode="multi" returns list[V]; annotate to help ty.
+    selected_experiments: list[str] = (
+        st.pills(  # type: ignore[assignment]
+            label,
+            options=experiment_names,
+            default=valid_default,
+            key="experiment_selector",
+            selection_mode="multi",
+            label_visibility="collapsed",
+        )
+        or []
     )
     st.space()
 
     # Check if selection changed - load initial runs
     # Load if selection changed OR if we have selection but no data (initial load)
-    if (
-        selected_experiments != st.session_state["selected_experiments"]
-        or (selected_experiments and RunsCache.get_run_count() == 0)
+    if selected_experiments != st.session_state["selected_experiments"] or (
+        selected_experiments and RunsCache.get_run_count() == 0
     ):
         st.session_state.selected_experiments = selected_experiments
         # Clear cache and load initial batch

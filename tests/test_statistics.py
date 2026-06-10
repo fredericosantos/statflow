@@ -9,7 +9,6 @@ Covers:
 
 import numpy as np
 import polars as pl
-import pytest
 
 from statflow.functional.statistics import (
     build_comparison_table,
@@ -17,7 +16,6 @@ from statflow.functional.statistics import (
     holm_bonferroni_correction,
     perform_statistical_tests,
 )
-
 
 # ---------------------------------------------------------------------------
 # holm_bonferroni_correction
@@ -148,13 +146,15 @@ def test_perform_statistical_tests_multiple_competitors_holm():
     """Multiple competitors: Holm correction is applied across them."""
     rng = np.random.default_rng(42)
     our = rng.normal(0.1, 0.05, 50).tolist()
-    b1  = rng.normal(0.9, 0.05, 50).tolist()
-    b2  = rng.normal(0.95, 0.05, 50).tolist()
+    b1 = rng.normal(0.9, 0.05, 50).tolist()
+    b2 = rng.normal(0.95, 0.05, 50).tolist()
 
-    df = pl.DataFrame({
-        "group_label": ["ours"] * 50 + ["b1"] * 50 + ["b2"] * 50,
-        "score": our + b1 + b2,
-    })
+    df = pl.DataFrame(
+        {
+            "group_label": ["ours"] * 50 + ["b1"] * 50 + ["b2"] * 50,
+            "score": our + b1 + b2,
+        }
+    )
     result = perform_statistical_tests(df, "ours", ["b1", "b2"], "score", maximize=False)
     assert "b1" in result
     assert "b2" in result
@@ -182,16 +182,20 @@ def test_perform_statistical_tests_result_keys():
 
 def _make_comparison_dfs() -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return (metric_df, param_df) suitable for build_comparison_table."""
-    param_df = pl.DataFrame({
-        "run_id": [f"r{i}" for i in range(12)],
-        "dataset_name": ["ds1"] * 6 + ["ds2"] * 6,
-        "group_label": ["ours", "ours", "ours", "theirs", "theirs", "theirs"] * 2,
-    })
+    param_df = pl.DataFrame(
+        {
+            "run_id": [f"r{i}" for i in range(12)],
+            "dataset_name": ["ds1"] * 6 + ["ds2"] * 6,
+            "group_label": ["ours", "ours", "ours", "theirs", "theirs", "theirs"] * 2,
+        }
+    )
     rng = np.random.default_rng(0)
-    metric_df = pl.DataFrame({
-        "run_id": [f"r{i}" for i in range(12)],
-        "accuracy": rng.uniform(0.1, 0.9, 12).tolist(),
-    })
+    metric_df = pl.DataFrame(
+        {
+            "run_id": [f"r{i}" for i in range(12)],
+            "accuracy": rng.uniform(0.1, 0.9, 12).tolist(),
+        }
+    )
     return metric_df, param_df
 
 

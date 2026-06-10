@@ -16,12 +16,13 @@ dataset_config.py
 import streamlit as st
 
 from statflow.components.selection_ui import (
-    render_item_selector,
     render_item_ordering,
+    render_item_selector,
     render_renaming_ui,
 )
-from statflow.loggers.runs_cache import RunsCache
 from statflow.config import SessionState
+from statflow.loggers.runs_cache import RunsCache
+
 from .constants import DatasetParamMode
 
 
@@ -100,16 +101,14 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
         if available_params:
             current_param = st.session_state.get("dataset_param", "")
             default_index = (
-                available_params.index(current_param)
-                if current_param in available_params
-                else 0
+                available_params.index(current_param) if current_param in available_params else 0
             )
             dataset_param = st.selectbox(
                 "Select parameter that defines dataset names",
                 options=available_params,
                 index=default_index,
                 key="dataset_param_selector",
-                help="Runs without a value in the selected parameter will be filtered out"
+                help="Runs without a value in the selected parameter will be filtered out",
             )
             st.session_state.dataset_param = dataset_param
         else:
@@ -125,10 +124,10 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
             help="Number of runs to fetch per search.",
             key="max_results",
         )
-        
+
         # Historical max runs logic
         historical_max = st.session_state.get("historical_max_run_count", 0)
-        
+
         # Update historical max if current runs are higher
         if run_count > historical_max:
             st.session_state["historical_max_run_count"] = run_count
@@ -137,9 +136,7 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
 
     with col3:
         button_label = (
-            f"Search {batch_size} more runs"
-            if run_count > 0
-            else f"Search {batch_size} runs"
+            f"Search {batch_size} more runs" if run_count > 0 else f"Search {batch_size} runs"
         )
         if st.button(button_label, key="search_datasets", width="stretch"):
             st.session_state._trigger_search = True
@@ -148,12 +145,13 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
     with col4:
         # Show button to load max runs if applicable
         if historical_max > batch_size:
+
             def _load_max_runs():
                 st.session_state["max_results"] = historical_max
                 st.session_state._trigger_search = True
-            
+
             st.button(
-                f"Load {historical_max} runs", 
+                f"Load {historical_max} runs",
                 help=f"Set batch size to your historical maximum of {historical_max} runs",
                 width="stretch",
                 on_click=_load_max_runs,
@@ -162,7 +160,10 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
     # Show run count status
     if run_count > 0:
         if new_runs_found > 0:
-            st.caption(f":material/analytics: {run_count} runs loaded (+{new_runs_found} new)", text_alignment="center")
+            st.caption(
+                f":material/analytics: {run_count} runs loaded (+{new_runs_found} new)",
+                text_alignment="center",
+            )
         else:
             st.caption(f":material/analytics: {run_count} runs loaded", text_alignment="center")
     elif new_runs_found == 0 and st.session_state.get("_searched_once", False):
@@ -182,7 +183,6 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
     ordered_datasets = _render_dataset_ordering(selected_datasets)
 
     # Warning moved to selectbox help
-
 
     return ordered_datasets
 
@@ -204,16 +204,12 @@ def handle_dataset_selection(
         return None
 
     if dataset_param == DatasetParamMode.EXPERIMENT_NAMES_AS_DATASETS:
-        available_datasets = _get_available_datasets(
-            selected_experiments, dataset_param
-        )
+        available_datasets = _get_available_datasets(selected_experiments, dataset_param)
         selected_datasets = _render_dataset_selector(available_datasets)
         ordered_datasets = _render_dataset_ordering(selected_datasets)
         return ordered_datasets
     elif dataset_param == DatasetParamMode.SINGLE_DATASET_MODE:
-        available_datasets = _get_available_datasets(
-            selected_experiments, dataset_param
-        )
+        available_datasets = _get_available_datasets(selected_experiments, dataset_param)
         selected_datasets = _render_dataset_selector(available_datasets)
         ordered_datasets = _render_dataset_ordering(selected_datasets)
         return ordered_datasets

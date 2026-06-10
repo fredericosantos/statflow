@@ -16,14 +16,16 @@ provider.py
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 import mlflow
+import pandas as pd
 import polars as pl
 import requests
 import streamlit as st
 
-from statflow.loggers.base import RunProvider, START_TIME_COL
+from statflow.loggers.base import START_TIME_COL, RunProvider
 from statflow.loggers.registry import register_provider
 
 
@@ -92,7 +94,10 @@ class MLflowProvider(RunProvider):
                 # External IO: skip an experiment that fails rather than abort the batch.
                 continue
 
-            if runs_pdf is None or runs_pdf.empty:
+            # mlflow.search_runs returns DataFrame | list[Run] depending on the
+            # output_format kwarg (default "pandas").  Guard with isinstance so ty
+            # knows we're operating on a pandas DataFrame before pl.from_pandas.
+            if not isinstance(runs_pdf, pd.DataFrame) or runs_pdf.empty:
                 continue
 
             runs_df = pl.from_pandas(runs_pdf)
@@ -100,7 +105,9 @@ class MLflowProvider(RunProvider):
 
             if START_TIME_COL in runs_df.columns:
                 min_val = runs_df.get_column(START_TIME_COL).min()
-                if min_val is not None:
+                # Polars .min() returns a wide union; guard that it's a datetime
+                # before calling .timestamp() to narrow the type for ty.
+                if isinstance(min_val, datetime.datetime):
                     cursors[exp_name] = int(min_val.timestamp() * 1000)
 
         if not all_new_runs:

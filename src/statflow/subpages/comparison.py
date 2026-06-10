@@ -12,26 +12,25 @@ comparison.py
 └── _render_direction_control()     # Per-metric better-is-lower/higher control
 """
 
-import streamlit as st
-import polars as pl
 import numpy as np
-import plotly.graph_objects as go
 import plotly.colors
+import plotly.graph_objects as go
+import polars as pl
+import streamlit as st
 from plotly.subplots import make_subplots
 
+from statflow.components.filters import render_group_filter
 from statflow.config import SessionState
-from statflow.shared.server_status import ServerStatusManager
 from statflow.functional.dataframes.data_processing import (
-    fetch_experiment_data,
     apply_metric_filters,
+    fetch_experiment_data,
 )
 from statflow.functional.statistics import (
     build_comparison_table,
     check_significance,
-    perform_statistical_tests,
 )
 from statflow.managers.naming import NamingManager
-from statflow.components.filters import render_group_filter
+from statflow.shared.server_status import ServerStatusManager
 
 
 def render_comparison_boxplots(
@@ -66,14 +65,19 @@ def render_comparison_boxplots(
     for i, dataset in enumerate(datasets):
         row = (i // cols) + 1
         col = (i % cols) + 1
-        
+
         dataset_data = raw_data.filter(pl.col("dataset_name") == dataset)
         winners = winners_per_dataset.get(dataset, [])
 
         for method in visible_methods:
-            method_data = dataset_data.filter(pl.col("group_label") == method).get_column(metric).drop_nulls().to_numpy()
+            method_data = (
+                dataset_data.filter(pl.col("group_label") == method)
+                .get_column(metric)
+                .drop_nulls()
+                .to_numpy()
+            )
             display_name = NamingManager.get_group_name(method)
-            
+
             if len(method_data) > 0:
                 fig.add_trace(
                     go.Box(
@@ -86,7 +90,7 @@ def render_comparison_boxplots(
                     row=row,
                     col=col,
                 )
-                
+
                 # Add trophy annotation if winner
                 if method in winners:
                     # Position trophy above the max value
@@ -109,7 +113,7 @@ def render_comparison_boxplots(
         # template="plotly_white",
         margin=dict(t=80, b=50, l=50, r=50),
     )
-    
+
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -172,9 +176,7 @@ def main():
         if saved_filter is None or not saved_filter:
             default_datasets = all_datasets
         else:
-            default_datasets = [
-                d for d in saved_filter if d in all_datasets
-            ] or all_datasets
+            default_datasets = [d for d in saved_filter if d in all_datasets] or all_datasets
 
         with st.expander("Dataset Filter", expanded=False, icon=":material/dataset:"):
             datasets_to_show = st.pills(
@@ -193,9 +195,7 @@ def main():
             datasets_to_show = default_datasets
 
     st.title(":material/trophy: Comparison")
-    st.markdown(
-        "Compare your methods against baseline methods with statistical testing."
-    )
+    st.markdown("Compare your methods against baseline methods with statistical testing.")
 
     # Check prerequisites
     if not st.session_state["selected_experiments"]:
@@ -231,9 +231,7 @@ def main():
     if saved_ours is None or not saved_ours:
         default_ours = selected_groups
     else:
-        default_ours = [
-            g for g in saved_ours if g in selected_groups
-        ] or selected_groups
+        default_ours = [g for g in saved_ours if g in selected_groups] or selected_groups
 
     st.markdown("##### Our Methods :violet[(selected)] vs Baseline (not selected)")
 
@@ -304,6 +302,9 @@ def main():
         st.info("Select a metric to compare.")
         return
 
+    # agg_type from st.pills(single) is str | None; default if somehow None.
+    agg_type_str: str = agg_type or "Mean ± Std"
+
     # Fetch data
     with st.spinner("Loading data..."):
         metric_df = fetch_experiment_data("metrics.")
@@ -338,7 +339,12 @@ def main():
 
     # Build comparison table
     agg_df, stats_results, combined_data = build_comparison_table(
-        metric_df, param_df, comparison_metric, agg_type, our_groups, their_groups,
+        metric_df,
+        param_df,
+        comparison_metric,
+        agg_type_str,
+        our_groups,
+        their_groups,
         maximize=maximize,
     )
 
@@ -360,9 +366,7 @@ def main():
     # Build display table
 
     # Use user's dataset order from Get Started (datasets_to_show preserves order)
-    datasets = [
-        d for d in datasets_to_show if d in agg_df.get_column("dataset_name").to_list()
-    ]
+    datasets = [d for d in datasets_to_show if d in agg_df.get_column("dataset_name").to_list()]
     all_methods = our_groups + their_groups
 
     # Create display data with significance tracking
@@ -392,8 +396,7 @@ def main():
                     our_stats = stats_results.get(f"{dataset}_{method}", {})
                     if our_stats:
                         all_sig = all(
-                            r.get("is_significant", False)
-                            and r.get("our_is_better", False)
+                            r.get("is_significant", False) and r.get("our_is_better", False)
                             for r in our_stats.values()
                         )
                         if all_sig:
@@ -402,9 +405,7 @@ def main():
                             trophy_counts[display_name] += 1
 
                 if value is not None:
-                    row_data[display_name] = format_cell(
-                        value, spread, decimals, is_sig
-                    )
+                    row_data[display_name] = format_cell(value, spread, decimals, is_sig)
                 else:
                     row_data[display_name] = "-"
             else:
@@ -424,12 +425,7 @@ def main():
     # Sort by wins descending
     achievement_df = pl.DataFrame(achievement_data).sort("Count 🥇", descending=True)
 
-    st.dataframe(
-        achievement_df,
-        width="stretch",
-        hide_index=True,
-        height="content"
-    )
+    st.dataframe(achievement_df, width="stretch", hide_index=True, height="content")
 
     # 6. Detailed Results
     st.markdown("#### Per Method Results")
@@ -446,38 +442,41 @@ def main():
         # Re-calculate display data for the focused view to include mutual trophies
         focused_display_data = []
         visible_methods = [our_method] + their_groups
-        
+
         # Track total trophies for the "Total" row
         column_trophies = {NamingManager.get_group_name(m): 0 for m in visible_methods}
         winners_per_dataset = {}  # {dataset_id: [method_id, ...]}
-        
+
         # We need the raw data for significance checks
         with st.spinner("Calculating mutual trophies..."):
             metric_df_raw = combined_data.select(["dataset_name", "group_label", comparison_metric])
-            
+
             for dataset in datasets:
                 row_data = {"Dataset": NamingManager.get_dataset_name(dataset)}
                 dataset_data_raw = metric_df_raw.filter(pl.col("dataset_name") == dataset)
                 winners_per_dataset[dataset] = []
-                
+
                 for method in visible_methods:
                     display_name = NamingManager.get_group_name(method)
-                    
+
                     row = agg_df.filter(
                         (pl.col("dataset_name") == dataset) & (pl.col("group_label") == method)
                     )
-                    
+
                     if not row.is_empty():
                         value = row.get_column("value")[0]
                         spread = row.get_column("spread")[0] or 0
-                        
+
                         # Check significance vs other visible methods
                         competitors = [m for m in visible_methods if m != method]
                         is_sig = check_significance(
-                            dataset_data_raw, method, competitors, comparison_metric,
+                            dataset_data_raw,
+                            method,
+                            competitors,
+                            comparison_metric,
                             maximize=maximize,
                         )
-                        
+
                         if value is not None:
                             row_data[display_name] = format_cell(value, spread, decimals, is_sig)
                             if is_sig:
@@ -487,15 +486,15 @@ def main():
                             row_data[display_name] = "-"
                     else:
                         row_data[display_name] = "-"
-                
+
                 focused_display_data.append(row_data)
-            
+
             # Add Total row
             total_row = {"Dataset": "Total"}
             for name, count in column_trophies.items():
                 total_row[name] = f"{count} 🥇"
             focused_display_data.append(total_row)
-        
+
         display_df = pl.DataFrame(focused_display_data)
 
         # # Pivot if requested (transpose: methods as rows, datasets as columns)

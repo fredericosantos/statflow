@@ -13,13 +13,10 @@ statflow/loggers/base.py:
 
 from __future__ import annotations
 
-import datetime
-import unittest.mock as mock
 from typing import Any
 
 import pandas as pd
 import polars as pl
-import pytest
 
 from statflow.loggers.base import (
     METRIC_PREFIX,
@@ -27,7 +24,6 @@ from statflow.loggers.base import (
     RUN_ID_COL,
     START_TIME_COL,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

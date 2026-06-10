@@ -12,12 +12,12 @@ naming.py
 │   └── get_name()
 """
 
-from statflow.config import SessionState, DEFAULT_STATE
+from statflow.config import DEFAULT_STATE, SessionState
 
 
 class NamingManager:
     """Manager for resolving display names."""
-    
+
     DATASET_RENAMES_KEY = "dataset_renames"
     METRIC_RENAMES_KEY = "metric_renames"
     GROUP_RENAMES_KEY = "group_renames"
@@ -29,15 +29,15 @@ class NamingManager:
         default_renames = DEFAULT_STATE.get(rename_key, {})
         renames = SessionState.get(rename_key, default_renames)
         entry = renames.get(original)
-        
+
         if entry is None:
             return original
-        
+
         if isinstance(entry, dict):
             return entry.get("display_name", original)
         elif isinstance(entry, str):
             return entry
-            
+
         return original
 
     @classmethod

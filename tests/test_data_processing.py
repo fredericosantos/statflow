@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import Any
 
 import polars as pl
-import pytest
 
 
 class _FakeSessionState(dict):
@@ -26,7 +25,7 @@ class _FakeSessionState(dict):
     def __setattr__(self, name: str, value: Any) -> None:
         self[name] = value
 
-    def get(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+    def get(self, key: str, default: Any = None) -> Any:
         return dict.get(self, key, default)
 
 
@@ -150,18 +149,21 @@ def test_apply_metric_filters_empty_df(monkeypatch):
 
 
 def _make_full_runs_df() -> pl.DataFrame:
-    return pl.DataFrame({
-        "run_id": ["r1", "r2", "r3"],
-        "start_time": [None, None, None],
-        "params.dataset": ["ds_a", "ds_b", "ds_a"],
-        "params.lr": ["0.01", "0.001", "0.01"],
-        "metrics.loss": [0.1, 0.2, 0.15],
-        "metrics.acc": [0.9, 0.8, 0.85],
-    })
+    return pl.DataFrame(
+        {
+            "run_id": ["r1", "r2", "r3"],
+            "start_time": [None, None, None],
+            "params.dataset": ["ds_a", "ds_b", "ds_a"],
+            "params.lr": ["0.01", "0.001", "0.01"],
+            "metrics.loss": [0.1, 0.2, 0.15],
+            "metrics.acc": [0.9, 0.8, 0.85],
+        }
+    )
 
 
 def test_fetch_experiment_data_metrics_prefix(monkeypatch):
     import streamlit as st
+
     from statflow.loggers import runs_cache as rc_module
 
     fake_state = _FakeSessionState(
@@ -174,9 +176,9 @@ def test_fetch_experiment_data_metrics_prefix(monkeypatch):
     monkeypatch.setattr(
         rc_module.RunsCache,
         "filter_by_datasets",
-        classmethod(lambda cls, param, datasets: full_df.filter(
-            pl.col("params.dataset").is_in(datasets)
-        )),
+        classmethod(
+            lambda cls, param, datasets: full_df.filter(pl.col("params.dataset").is_in(datasets))
+        ),
     )
 
     from statflow.functional.dataframes.data_processing import fetch_experiment_data
@@ -191,6 +193,7 @@ def test_fetch_experiment_data_metrics_prefix(monkeypatch):
 
 def test_fetch_experiment_data_dataset_col_renamed(monkeypatch):
     import streamlit as st
+
     from statflow.loggers import runs_cache as rc_module
 
     fake_state = _FakeSessionState(
@@ -203,9 +206,9 @@ def test_fetch_experiment_data_dataset_col_renamed(monkeypatch):
     monkeypatch.setattr(
         rc_module.RunsCache,
         "filter_by_datasets",
-        classmethod(lambda cls, param, datasets: full_df.filter(
-            pl.col("params.dataset").is_in(datasets)
-        )),
+        classmethod(
+            lambda cls, param, datasets: full_df.filter(pl.col("params.dataset").is_in(datasets))
+        ),
     )
 
     from statflow.functional.dataframes.data_processing import fetch_experiment_data
@@ -216,6 +219,7 @@ def test_fetch_experiment_data_dataset_col_renamed(monkeypatch):
 
 def test_fetch_experiment_data_params_prefix(monkeypatch):
     import streamlit as st
+
     from statflow.loggers import runs_cache as rc_module
 
     fake_state = _FakeSessionState(

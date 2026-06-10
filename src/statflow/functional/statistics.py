@@ -20,9 +20,7 @@ import polars as pl
 from scipy import stats
 
 
-def holm_bonferroni_correction(
-    p_values: list[float], alpha: float = 0.05
-) -> list[bool]:
+def holm_bonferroni_correction(p_values: list[float], alpha: float = 0.05) -> list[bool]:
     """Apply Holm-Bonferroni correction to p-values.
 
     Sorts p-values ascending, tests each against a shrinking threshold
@@ -74,10 +72,7 @@ def perform_statistical_tests(
     alternative = "greater" if maximize else "less"
 
     our_data = (
-        raw_data.filter(pl.col(group_col) == our_group)
-        .get_column(metric)
-        .drop_nulls()
-        .to_numpy()
+        raw_data.filter(pl.col(group_col) == our_group).get_column(metric).drop_nulls().to_numpy()
     )
 
     if len(our_data) == 0:
@@ -98,14 +93,10 @@ def perform_statistical_tests(
             continue
 
         try:
-            _stat, pval = stats.mannwhitneyu(
-                our_data, their_data, alternative=alternative
-            )
+            _stat, pval = stats.mannwhitneyu(our_data, their_data, alternative=alternative)
             our_median = float(np.median(our_data))
             their_median = float(np.median(their_data))
-            our_is_better = (
-                our_median > their_median if maximize else our_median < their_median
-            )
+            our_is_better = our_median > their_median if maximize else our_median < their_median
 
             p_values.append(pval)
             group_names.append(their_group)
@@ -142,8 +133,7 @@ def check_significance(
     if not res:
         return False
     return all(
-        r.get("is_significant", False) and r.get("our_is_better", False)
-        for r in res.values()
+        r.get("is_significant", False) and r.get("our_is_better", False) for r in res.values()
     )
 
 
@@ -187,15 +177,19 @@ def build_comparison_table(
 
     m_col = pl.col(metric).drop_nans()
     if agg_type == "Mean ± Std":
-        agg_df = combined.group_by(["dataset_name", "group_label"]).agg([
-            m_col.mean().alias("value"),
-            m_col.std().alias("spread"),
-        ])
+        agg_df = combined.group_by(["dataset_name", "group_label"]).agg(
+            [
+                m_col.mean().alias("value"),
+                m_col.std().alias("spread"),
+            ]
+        )
     else:  # Median ± IQR
-        agg_df = combined.group_by(["dataset_name", "group_label"]).agg([
-            m_col.median().alias("value"),
-            (m_col.quantile(0.75) - m_col.quantile(0.25)).alias("spread"),
-        ])
+        agg_df = combined.group_by(["dataset_name", "group_label"]).agg(
+            [
+                m_col.median().alias("value"),
+                (m_col.quantile(0.75) - m_col.quantile(0.25)).alias("spread"),
+            ]
+        )
 
     stats_results: dict[str, Any] = {}
     if our_groups and their_groups:

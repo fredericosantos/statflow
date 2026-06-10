@@ -40,5 +40,10 @@ src = ["src"]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
-[tool.ty]
+[tool.ty.environment]
 python-version = "3.13"
+
+[tool.ty.rules]
+# MLflow's public API attributes (MlflowClient, search_runs, get_experiment_by_name)
+# are not typed in mlflow's stubs; suppress the false-positive warnings.
+possibly-missing-attribute = "ignore"

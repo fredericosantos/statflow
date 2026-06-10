@@ -37,9 +37,7 @@ def calculate_pareto_front(df: pl.DataFrame, x_col: str, y_col: str) -> pl.DataF
     return sorted_df[pareto_indices].sort(x_col)
 
 
-def fetch_experiment_data(
-    column_prefix: str, clean_prefix: bool = True
-) -> pl.DataFrame:
+def fetch_experiment_data(column_prefix: str, clean_prefix: bool = True) -> pl.DataFrame:
     """Fetch experiment data for selected experiments and datasets from cache.
 
     Args:
@@ -87,11 +85,7 @@ def fetch_experiment_data(
     # Clean column names if requested
     if clean_prefix:
         # Build rename map, excluding dataset_col (already renamed above) and run_id
-        new_names = {
-            col: col.replace(column_prefix, "")
-            for col in cols
-            if col != dataset_col
-        }
+        new_names = {col: col.replace(column_prefix, "") for col in cols if col != dataset_col}
 
         # Only rename columns that exist in df
         new_names = {k: v for k, v in new_names.items() if k in df.columns}
@@ -125,9 +119,7 @@ def apply_metric_filters(df: pl.DataFrame) -> pl.DataFrame:
 
         if selected_range is not None:
             # Range filter naturally excludes nulls/NaNs (float comparisons)
-            cond = (pl.col(metric) >= selected_range[0]) & (
-                pl.col(metric) <= selected_range[1]
-            )
+            cond = (pl.col(metric) >= selected_range[0]) & (pl.col(metric) <= selected_range[1])
 
             # If user wants NaNs/nulls, we explicitly OR them back in
             if include_nans:
