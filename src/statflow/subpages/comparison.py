@@ -207,15 +207,13 @@ def main():
         return
 
     selected_groups = (
-        filtered_group_labels
-        if filtered_group_labels
-        else st.session_state.get("selected_groups", [])
+        filtered_group_labels if filtered_group_labels else st.session_state["selected_groups"]
     )
     if not selected_groups:
         st.warning("Please select and configure groups in Parameters page.")
         return
 
-    selected_metrics = st.session_state.get("selected_metrics", [])
+    selected_metrics = st.session_state["selected_metrics"]
     if not selected_metrics:
         st.warning("Please select metrics in Metrics page.")
         return
@@ -322,7 +320,7 @@ def main():
         return
 
     # Build group labels
-    selected_params = st.session_state.get("selected_params", [])
+    selected_params = st.session_state["selected_params"]
     exprs = []
     for i, p in enumerate(selected_params):
         if p not in param_df.columns:

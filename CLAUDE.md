@@ -9,12 +9,6 @@ from **either MLflow or Weights & Biases** (parameter exploration, metrics distr
 ours-vs-theirs significance testing). The intended use is symbolic-regression / GP research runs,
 but nothing is hardcoded to that — metric direction (lower/higher-is-better) is configurable.
 
-> **Stale docstring warning.** `README.md` is current. A few **module/subpage docstring trees**
-> (e.g. `subpages/*`, `functional/dataframes/data_processing.py`) still list functions that have
-> since moved or been renamed. Trust the actual file tree and the sections below for structure;
-> a docstring tree is only authoritative for the *contents of the file it lives in*, and even then
-> may drift.
-
 ## Commands
 
 ```bash

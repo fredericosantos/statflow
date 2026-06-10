@@ -1,11 +1,12 @@
 """
 Metrics page for the Statflow application.
 
-This page allows users to explore, filter, and configure experiment metrics.
+Allows users to select, order, rename, and filter experiment metrics before
+proceeding to the Results / Comparison pages.
 
 metrics.py
-├── main()                          # Main page entry point
-└── render_metric_filters()         # Dynamic metric filter UI with sliders
+├── render_metric_filters()         # Dynamic metric filter UI with sliders and NaN toggle
+└── main()                          # Main page entry point
 """
 
 import polars as pl
@@ -139,14 +140,12 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
                     st.rerun()  # Rerun to apply nan change immediately
 
         with remove_col:
-            st.write("")  # Spacer to align button
-            st.write("")
             if st.button(
                 "Metric",
                 key=f"remove_metric_filter_{metric}",
                 help=f"Remove {metric} filter",
                 icon=":material/delete:",
-                type="primary",  # Trying primary to make it stand out
+                type="primary",
             ):
                 st.session_state.active_metric_filters.remove(metric)
                 if metric in st.session_state.metric_filter_values:
@@ -155,9 +154,6 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
                     del st.session_state.metric_filter_nans[metric]
                 SessionState.save_to_config()
                 st.rerun()
-
-        # The logic has been shifted to a shared utility for consistency
-        pass
 
     return apply_metric_filters(metric_df)
 
@@ -187,7 +183,7 @@ def main():
         render_selection_pills,
     )
 
-    available_metrics = st.session_state.get("available_metrics", [])
+    available_metrics = st.session_state["available_metrics"]
     if not available_metrics:
         st.warning("No metrics found. Please load experiment data first.")
         return

@@ -1,13 +1,16 @@
 """
 Results page for the Statflow application.
 
-This page displays experiment results organized by groups and datasets.
+Displays aggregated experiment results (mean/median ± spread) as tables and
+boxplots, grouped by parameter combos and filtered to the selected dataset.
 
 results.py
-├── main()                          # Main page entry point
-├── build_results_table()           # Build aggregated results table
-├── get_display_name()              # Extract display name from renames
-└── render_results_by_dataset()     # Render results grouped by dataset
+├── get_combined_data()             # Join metric + param data into one DataFrame
+├── build_results_table()           # Pivot aggregated stats into a display table
+├── render_boxplot()                # Single-metric boxplot by group
+├── render_dataset_boxplots()       # All metrics × groups for a single dataset
+├── render_dataset_table()          # Aggregated stats table for a single dataset
+└── main()                          # Main page entry point
 """
 
 import plotly.express as px
@@ -329,7 +332,7 @@ def main():
             }
 
             # Find current label or default
-            current_val = st.session_state.get("points_display", "outliers")
+            current_val = st.session_state["points_display"]
             current_label = next(
                 (k for k, v in points_options.items() if v == current_val), "Outliers Only"
             )
@@ -359,8 +362,8 @@ def main():
         return
 
     # 3. Boxplots
-    group_renames = st.session_state.get("group_renames", {})
-    dataset_renames = st.session_state.get("dataset_renames", {})
+    group_renames = st.session_state["group_renames"]
+    dataset_renames = st.session_state["dataset_renames"]
 
     render_dataset_boxplots(
         raw_df,
@@ -380,28 +383,28 @@ def main():
     with col1:
         show_mean = st.checkbox(
             "Show Mean",
-            value=st.session_state.get("show_mean", True),
+            value=st.session_state["show_mean"],
             key="show_mean",
             on_change=lambda: SessionState.save_to_config(),
         )
     with col2:
         show_median = st.checkbox(
             "Show Median",
-            value=st.session_state.get("show_median", False),
+            value=st.session_state["show_median"],
             key="show_median",
             on_change=lambda: SessionState.save_to_config(),
         )
     with col3:
         show_std = st.checkbox(
             "Show Std Dev",
-            value=st.session_state.get("show_std", True),
+            value=st.session_state["show_std"],
             key="show_std",
             on_change=lambda: SessionState.save_to_config(),
         )
     with col4:
         show_n = st.checkbox(
             "Show Count",
-            value=st.session_state.get("show_count", False),
+            value=st.session_state["show_count"],
             key="show_count",
             on_change=lambda: SessionState.save_to_config(),
         )
