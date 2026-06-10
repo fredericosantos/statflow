@@ -18,7 +18,7 @@ that — any params/metrics work, and whether a metric is better lower or higher
 - **Metric distributions & filters** — range/NaN filters applied consistently across pages.
 - **Ours-vs-theirs significance** — Wilcoxon rank-sum (Mann–Whitney U) with Holm–Bonferroni
   correction, per-metric minimize/maximize direction, 🥇 markers and boxplots.
-- **Persistent preferences** — selections and settings saved to `.statflow_config.yaml`.
+- **Persistent preferences** — selections and settings saved to `~/.statflow/config.yaml`.
 
 ## Requirements
 
@@ -101,9 +101,11 @@ better than **all** baselines at α = 0.05. "Better" follows the per-metric **di
 
 ## Configuration
 
-User preferences persist to **`.statflow_config.yaml`** in the current working directory
-(gitignored). On launch, `SessionState.initialize()` seeds every key from `DEFAULT_STATE`,
-preferring saved values; only keys in `PERSISTABLE_KEYS` are written back.
+User preferences persist to **`~/.statflow/config.yaml`**. On first run, if the legacy
+`.statflow_config.yaml` exists in the current working directory, it is copied to the new
+location (the original is left untouched). On launch, `SessionState.initialize()` seeds every
+key from `DEFAULT_STATE`, preferring saved values; only keys in `PERSISTABLE_KEYS` are written
+back.
 
 ## Development
 

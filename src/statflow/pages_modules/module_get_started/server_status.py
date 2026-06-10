@@ -10,13 +10,14 @@ server_status.py
 └── Error handling and user feedback
 """
 
-import streamlit as st
-import polars as pl
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 
-from statflow.shared.server_status import ServerStatusManager
+import polars as pl
+import streamlit as st
+
 from statflow.config import SessionState
+from statflow.shared.server_status import ServerStatusManager
 
 
 def handle_server_status(server_status_manager: ServerStatusManager) -> bool:
@@ -149,7 +150,7 @@ def _render_table_details(table_name: str, conn) -> None:
         schema_cols = ["cid", "name", "type", "notnull", "dflt_value", "pk"]
         dicts = [dict(zip(schema_cols, row)) for row in columns]
         df_schema = pl.from_dicts(dicts, strict=False)
-        
+
         st.dataframe(df_schema.select(["name", "type", "notnull", "pk"]))
 
         # Show row count
@@ -161,14 +162,14 @@ def _render_table_details(table_name: str, conn) -> None:
         limit_key = f"db_limit_{table_name}"
         if limit_key not in st.session_state:
             st.session_state[limit_key] = 100
-        
+
         current_limit = st.session_state[limit_key]
 
         # Load and show data
         st.markdown(f"#### Data from table: {table_name}")
-        
+
         query = f"SELECT * FROM {table_name} LIMIT {current_limit}"
-        
+
         try:
             df = pl.read_database(
                 query,
@@ -183,7 +184,7 @@ def _render_table_details(table_name: str, conn) -> None:
             data = cursor.fetchall()
             dicts = [dict(zip(columns, row)) for row in data]
             df = pl.from_dicts(dicts, strict=False)
-        
+
         st.dataframe(df, width="stretch")
 
         # Load more button

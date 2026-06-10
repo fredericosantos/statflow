@@ -2,200 +2,35 @@
 Comparison page for the Statflow application.
 
 Compares 'our' methods vs 'their' methods with statistical significance testing.
+Pure statistical logic lives in ``functional/statistics.py``; this module owns
+the Streamlit UI only.
 
 comparison.py
 ├── main()                          # Main page entry point
-├── perform_statistical_tests()     # Wilcoxon rank-sum with Holm-Bonferroni
-├── build_comparison_table()        # Build comparison table with stats
+├── render_comparison_boxplots()    # Boxplot subplots with trophy annotations
 ├── format_cell()                   # Format value with std and significance
-└── style_dataframe()               # Apply styling to significant cells
+└── _render_direction_control()     # Per-metric better-is-lower/higher control
 """
 
-import streamlit as st
-import polars as pl
 import numpy as np
-from scipy import stats
-import plotly.graph_objects as go
 import plotly.colors
+import plotly.graph_objects as go
+import polars as pl
+import streamlit as st
 from plotly.subplots import make_subplots
 
+from statflow.components.filters import render_group_filter
 from statflow.config import SessionState
-from statflow.shared.server_status import ServerStatusManager
 from statflow.functional.dataframes.data_processing import (
-    fetch_experiment_data,
     apply_metric_filters,
+    fetch_experiment_data,
+)
+from statflow.functional.statistics import (
+    build_comparison_table,
+    check_significance,
 )
 from statflow.managers.naming import NamingManager
-from statflow.components.filters import render_group_filter
-
-
-def holm_bonferroni_correction(
-    p_values: list[float], alpha: float = 0.05
-) -> list[bool]:
-    """Apply Holm-Bonferroni correction to p-values."""
-    n = len(p_values)
-    if n == 0:
-        return []
-
-    indexed_pvals = list(enumerate(p_values))
-    indexed_pvals.sort(key=lambda x: x[1])
-
-    rejected = [False] * n
-    for i, (orig_idx, pval) in enumerate(indexed_pvals):
-        corrected_alpha = alpha / (n - i)
-        if pval <= corrected_alpha:
-            rejected[orig_idx] = True
-        else:
-            break
-
-    return rejected
-
-
-def perform_statistical_tests(
-    raw_data: pl.DataFrame,
-    our_group: str,
-    their_groups: list[str],
-    metric: str,
-    group_col: str = "group_label",
-    maximize: bool = False,
-) -> dict[str, dict]:
-    """Mann-Whitney U (Wilcoxon rank-sum) one-vs-all, one-sided by direction.
-
-    `maximize=False` (default) treats lower values as better (e.g. error/loss);
-    `maximize=True` treats higher values as better (e.g. accuracy/R^2). The
-    test's one-sided alternative and the median comparison both follow it.
-    """
-    results = {}
-
-    alternative = "greater" if maximize else "less"
-
-    our_data = (
-        raw_data.filter(pl.col(group_col) == our_group)
-        .get_column(metric)
-        .drop_nulls()
-        .to_numpy()
-    )
-
-    if len(our_data) == 0:
-        return results
-
-    p_values = []
-    group_names = []
-
-    for their_group in their_groups:
-        their_data = (
-            raw_data.filter(pl.col(group_col) == their_group)
-            .get_column(metric)
-            .drop_nulls()
-            .to_numpy()
-        )
-
-        if len(their_data) == 0:
-            continue
-
-        try:
-            stat, pval = stats.mannwhitneyu(
-                our_data, their_data, alternative=alternative
-            )
-            our_median = np.median(our_data)
-            their_median = np.median(their_data)
-            our_is_better = (
-                our_median > their_median if maximize else our_median < their_median
-            )
-
-            p_values.append(pval)
-            group_names.append(their_group)
-            results[their_group] = {
-                "p_value": pval,
-                "our_median": our_median,
-                "their_median": their_median,
-                "our_is_better": our_is_better,
-            }
-        except Exception:
-            continue
-
-    if p_values:
-        rejected = holm_bonferroni_correction(p_values)
-        for i, group_name in enumerate(group_names):
-            results[group_name]["is_significant"] = rejected[i]
-
-    return results
-
-
-def check_significance(
-    raw_data: pl.DataFrame,
-    focused_group: str,
-    competitor_groups: list[str],
-    metric: str,
-    maximize: bool = False,
-) -> bool:
-    """Check if focused_group is significantly better than ALL competitor_groups."""
-    if not competitor_groups:
-        return False
-    res = perform_statistical_tests(
-        raw_data, focused_group, competitor_groups, metric, maximize=maximize
-    )
-    if not res:
-        return False
-    return all(
-        r.get("is_significant", False) and r.get("our_is_better", False)
-        for r in res.values()
-    )
-
-
-def build_comparison_table(
-    metric_df: pl.DataFrame,
-    param_df: pl.DataFrame,
-    metric: str,
-    agg_type: str,
-    our_groups: list[str],
-    their_groups: list[str],
-    maximize: bool = False,
-) -> tuple[pl.DataFrame, dict, pl.DataFrame]:
-    """Build comparison table: (aggregated stats, per-dataset tests, joined raw rows)."""
-    if "run_id" in metric_df.columns and "run_id" in param_df.columns:
-        combined = metric_df.join(
-            param_df.select(["run_id", "group_label", "dataset_name"]),
-            on="run_id",
-            how="left",
-        )
-    else:
-        combined = metric_df.join(
-            param_df.select(["dataset_name", "group_label"]).unique(),
-            on="dataset_name",
-            how="left",
-        )
-
-    if combined.is_empty():
-        return pl.DataFrame(), {}, pl.DataFrame()
-
-    all_groups = our_groups + their_groups
-    combined = combined.filter(pl.col("group_label").is_in(all_groups))
-
-    m_col = pl.col(metric).drop_nans()
-    if agg_type == "Mean ± Std":
-        agg_df = combined.group_by(["dataset_name", "group_label"]).agg([
-            m_col.mean().alias("value"),
-            m_col.std().alias("spread"),
-        ])
-    else:  # Median ± IQR
-        agg_df = combined.group_by(["dataset_name", "group_label"]).agg([
-            m_col.median().alias("value"),
-            (m_col.quantile(0.75) - m_col.quantile(0.25)).alias("spread"),
-        ])
-
-    stats_results = {}
-    if our_groups and their_groups:
-        datasets = combined.get_column("dataset_name").unique().to_list()
-        for dataset in datasets:
-            dataset_data = combined.filter(pl.col("dataset_name") == dataset)
-            for our_group in our_groups:
-                key = f"{dataset}_{our_group}"
-                stats_results[key] = perform_statistical_tests(
-                    dataset_data, our_group, their_groups, metric, maximize=maximize
-                )
-
-    return agg_df, stats_results, combined
+from statflow.shared.server_status import ServerStatusManager
 
 
 def render_comparison_boxplots(
@@ -230,14 +65,19 @@ def render_comparison_boxplots(
     for i, dataset in enumerate(datasets):
         row = (i // cols) + 1
         col = (i % cols) + 1
-        
+
         dataset_data = raw_data.filter(pl.col("dataset_name") == dataset)
         winners = winners_per_dataset.get(dataset, [])
 
         for method in visible_methods:
-            method_data = dataset_data.filter(pl.col("group_label") == method).get_column(metric).drop_nulls().to_numpy()
+            method_data = (
+                dataset_data.filter(pl.col("group_label") == method)
+                .get_column(metric)
+                .drop_nulls()
+                .to_numpy()
+            )
             display_name = NamingManager.get_group_name(method)
-            
+
             if len(method_data) > 0:
                 fig.add_trace(
                     go.Box(
@@ -250,7 +90,7 @@ def render_comparison_boxplots(
                     row=row,
                     col=col,
                 )
-                
+
                 # Add trophy annotation if winner
                 if method in winners:
                     # Position trophy above the max value
@@ -273,7 +113,7 @@ def render_comparison_boxplots(
         # template="plotly_white",
         margin=dict(t=80, b=50, l=50, r=50),
     )
-    
+
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -336,9 +176,7 @@ def main():
         if saved_filter is None or not saved_filter:
             default_datasets = all_datasets
         else:
-            default_datasets = [
-                d for d in saved_filter if d in all_datasets
-            ] or all_datasets
+            default_datasets = [d for d in saved_filter if d in all_datasets] or all_datasets
 
         with st.expander("Dataset Filter", expanded=False, icon=":material/dataset:"):
             datasets_to_show = st.pills(
@@ -357,9 +195,7 @@ def main():
             datasets_to_show = default_datasets
 
     st.title(":material/trophy: Comparison")
-    st.markdown(
-        "Compare your methods against baseline methods with statistical testing."
-    )
+    st.markdown("Compare your methods against baseline methods with statistical testing.")
 
     # Check prerequisites
     if not st.session_state["selected_experiments"]:
@@ -371,15 +207,13 @@ def main():
         return
 
     selected_groups = (
-        filtered_group_labels
-        if filtered_group_labels
-        else st.session_state.get("selected_groups", [])
+        filtered_group_labels if filtered_group_labels else st.session_state["selected_groups"]
     )
     if not selected_groups:
         st.warning("Please select and configure groups in Parameters page.")
         return
 
-    selected_metrics = st.session_state.get("selected_metrics", [])
+    selected_metrics = st.session_state["selected_metrics"]
     if not selected_metrics:
         st.warning("Please select metrics in Metrics page.")
         return
@@ -395,9 +229,7 @@ def main():
     if saved_ours is None or not saved_ours:
         default_ours = selected_groups
     else:
-        default_ours = [
-            g for g in saved_ours if g in selected_groups
-        ] or selected_groups
+        default_ours = [g for g in saved_ours if g in selected_groups] or selected_groups
 
     st.markdown("##### Our Methods :violet[(selected)] vs Baseline (not selected)")
 
@@ -468,6 +300,9 @@ def main():
         st.info("Select a metric to compare.")
         return
 
+    # agg_type from st.pills(single) is str | None; default if somehow None.
+    agg_type_str: str = agg_type or "Mean ± Std"
+
     # Fetch data
     with st.spinner("Loading data..."):
         metric_df = fetch_experiment_data("metrics.")
@@ -485,7 +320,7 @@ def main():
         return
 
     # Build group labels
-    selected_params = st.session_state.get("selected_params", [])
+    selected_params = st.session_state["selected_params"]
     exprs = []
     for i, p in enumerate(selected_params):
         if p not in param_df.columns:
@@ -502,7 +337,12 @@ def main():
 
     # Build comparison table
     agg_df, stats_results, combined_data = build_comparison_table(
-        metric_df, param_df, comparison_metric, agg_type, our_groups, their_groups,
+        metric_df,
+        param_df,
+        comparison_metric,
+        agg_type_str,
+        our_groups,
+        their_groups,
         maximize=maximize,
     )
 
@@ -524,9 +364,7 @@ def main():
     # Build display table
 
     # Use user's dataset order from Get Started (datasets_to_show preserves order)
-    datasets = [
-        d for d in datasets_to_show if d in agg_df.get_column("dataset_name").to_list()
-    ]
+    datasets = [d for d in datasets_to_show if d in agg_df.get_column("dataset_name").to_list()]
     all_methods = our_groups + their_groups
 
     # Create display data with significance tracking
@@ -556,8 +394,7 @@ def main():
                     our_stats = stats_results.get(f"{dataset}_{method}", {})
                     if our_stats:
                         all_sig = all(
-                            r.get("is_significant", False)
-                            and r.get("our_is_better", False)
+                            r.get("is_significant", False) and r.get("our_is_better", False)
                             for r in our_stats.values()
                         )
                         if all_sig:
@@ -566,9 +403,7 @@ def main():
                             trophy_counts[display_name] += 1
 
                 if value is not None:
-                    row_data[display_name] = format_cell(
-                        value, spread, decimals, is_sig
-                    )
+                    row_data[display_name] = format_cell(value, spread, decimals, is_sig)
                 else:
                     row_data[display_name] = "-"
             else:
@@ -588,12 +423,7 @@ def main():
     # Sort by wins descending
     achievement_df = pl.DataFrame(achievement_data).sort("Count 🥇", descending=True)
 
-    st.dataframe(
-        achievement_df,
-        width="stretch",
-        hide_index=True,
-        height="content"
-    )
+    st.dataframe(achievement_df, width="stretch", hide_index=True, height="content")
 
     # 6. Detailed Results
     st.markdown("#### Per Method Results")
@@ -610,38 +440,41 @@ def main():
         # Re-calculate display data for the focused view to include mutual trophies
         focused_display_data = []
         visible_methods = [our_method] + their_groups
-        
+
         # Track total trophies for the "Total" row
         column_trophies = {NamingManager.get_group_name(m): 0 for m in visible_methods}
         winners_per_dataset = {}  # {dataset_id: [method_id, ...]}
-        
+
         # We need the raw data for significance checks
         with st.spinner("Calculating mutual trophies..."):
             metric_df_raw = combined_data.select(["dataset_name", "group_label", comparison_metric])
-            
+
             for dataset in datasets:
                 row_data = {"Dataset": NamingManager.get_dataset_name(dataset)}
                 dataset_data_raw = metric_df_raw.filter(pl.col("dataset_name") == dataset)
                 winners_per_dataset[dataset] = []
-                
+
                 for method in visible_methods:
                     display_name = NamingManager.get_group_name(method)
-                    
+
                     row = agg_df.filter(
                         (pl.col("dataset_name") == dataset) & (pl.col("group_label") == method)
                     )
-                    
+
                     if not row.is_empty():
                         value = row.get_column("value")[0]
                         spread = row.get_column("spread")[0] or 0
-                        
+
                         # Check significance vs other visible methods
                         competitors = [m for m in visible_methods if m != method]
                         is_sig = check_significance(
-                            dataset_data_raw, method, competitors, comparison_metric,
+                            dataset_data_raw,
+                            method,
+                            competitors,
+                            comparison_metric,
                             maximize=maximize,
                         )
-                        
+
                         if value is not None:
                             row_data[display_name] = format_cell(value, spread, decimals, is_sig)
                             if is_sig:
@@ -651,15 +484,15 @@ def main():
                             row_data[display_name] = "-"
                     else:
                         row_data[display_name] = "-"
-                
+
                 focused_display_data.append(row_data)
-            
+
             # Add Total row
             total_row = {"Dataset": "Total"}
             for name, count in column_trophies.items():
                 total_row[name] = f"{count} 🥇"
             focused_display_data.append(total_row)
-        
+
         display_df = pl.DataFrame(focused_display_data)
 
         # # Pivot if requested (transpose: methods as rows, datasets as columns)

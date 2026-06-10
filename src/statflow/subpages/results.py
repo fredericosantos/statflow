@@ -1,27 +1,30 @@
 """
 Results page for the Statflow application.
 
-This page displays experiment results organized by groups and datasets.
+Displays aggregated experiment results (mean/median ± spread) as tables and
+boxplots, grouped by parameter combos and filtered to the selected dataset.
 
 results.py
-├── main()                          # Main page entry point
-├── build_results_table()           # Build aggregated results table
-├── get_display_name()              # Extract display name from renames
-└── render_results_by_dataset()     # Render results grouped by dataset
+├── get_combined_data()             # Join metric + param data into one DataFrame
+├── build_results_table()           # Pivot aggregated stats into a display table
+├── render_boxplot()                # Single-metric boxplot by group
+├── render_dataset_boxplots()       # All metrics × groups for a single dataset
+├── render_dataset_table()          # Aggregated stats table for a single dataset
+└── main()                          # Main page entry point
 """
 
-import streamlit as st
-import polars as pl
 import plotly.express as px
+import polars as pl
+import streamlit as st
 
+from statflow.components.filters import render_group_filter
 from statflow.config import SessionState
-from statflow.pages_modules.module_get_started.server_status import ServerStatusManager
 from statflow.functional.dataframes.data_processing import (
-    fetch_experiment_data,
     apply_metric_filters,
+    fetch_experiment_data,
 )
 from statflow.managers.naming import NamingManager
-from statflow.components.filters import render_group_filter
+from statflow.shared.server_status import ServerStatusManager
 
 
 def get_combined_data(
@@ -31,9 +34,7 @@ def get_combined_data(
 ) -> pl.DataFrame:
     """Join metrics with parameter groups."""
     if "run_id" in metric_df.columns and "run_id" in param_df.columns:
-        combined = metric_df.join(
-            param_df.select(["run_id", group_col]), on="run_id", how="left"
-        )
+        combined = metric_df.join(param_df.select(["run_id", group_col]), on="run_id", how="left")
     else:
         if "dataset_name" in metric_df.columns and "dataset_name" in param_df.columns:
             combined = metric_df.join(
@@ -61,20 +62,20 @@ def build_results_table(
         if metric in combined_df.columns:
             # Use expressions that explicitly handle NaNs and nulls for accurate stats
             m_col = pl.col(metric).drop_nans()
-            agg_exprs.extend([
-                m_col.mean().alias(f"{metric}_mean"),
-                m_col.median().alias(f"{metric}_median"),
-                m_col.std().alias(f"{metric}_std"),
-                m_col.drop_nulls().count().alias(f"{metric}_n"),
-            ])
+            agg_exprs.extend(
+                [
+                    m_col.mean().alias(f"{metric}_mean"),
+                    m_col.median().alias(f"{metric}_median"),
+                    m_col.std().alias(f"{metric}_std"),
+                    m_col.drop_nulls().count().alias(f"{metric}_n"),
+                ]
+            )
 
     if not agg_exprs:
         return pl.DataFrame()
 
     group_cols = (
-        ["dataset_name", group_col]
-        if "dataset_name" in combined_df.columns
-        else [group_col]
+        ["dataset_name", group_col] if "dataset_name" in combined_df.columns else [group_col]
     )
     results = combined_df.group_by(group_cols).agg(agg_exprs)
 
@@ -99,9 +100,7 @@ def render_boxplot(
     plot_df = df.select([group_col, metric]).to_pandas()
 
     # Apply renames to group column for display using map logic
-    display_map = {
-        g: NamingManager.get_group_name(g) for g in plot_df[group_col].unique()
-    }
+    display_map = {g: NamingManager.get_group_name(g) for g in plot_df[group_col].unique()}
     plot_df[group_col] = plot_df[group_col].map(display_map)
 
     # Use selected_groups for display order if provided
@@ -127,7 +126,7 @@ def render_boxplot(
         margin=dict(l=20, r=20, t=40, b=20),
         height=plot_height,
     )
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_dataset_boxplots(
@@ -168,9 +167,7 @@ def render_dataset_table(
     """Render results table for a single dataset."""
     # Prepare flat renames for Polars replace in table
     # Prepare flat renames for Polars replace in table
-    flat_group_renames = {
-        k: NamingManager.get_group_name(k) for k in group_renames.keys()
-    }
+    flat_group_renames = {k: NamingManager.get_group_name(k) for k in group_renames.keys()}
 
     dataset_agg = results_df.filter(pl.col("dataset_name") == dataset)
     display_df = dataset_agg.drop("dataset_name")
@@ -247,7 +244,6 @@ def main():
     else:
         param_df = param_df.with_columns(pl.lit("Default").alias("group_label"))
 
-
     # Filter to selected groups (from Parameters) + applied group filter (transient)
     if filtered_group_labels and "group_label" in param_df.columns:
         param_df = param_df.filter(pl.col("group_label").is_in(filtered_group_labels))
@@ -271,11 +267,15 @@ def main():
     # Sort results_df by filtered_group_labels order if available
     if filtered_group_labels:
         order_map = {g: i for i, g in enumerate(filtered_group_labels)}
-        results_df = results_df.with_columns(
-            order=pl.col("group_label").replace_strict(
-                list(order_map.keys()), list(order_map.values()), default=999
+        results_df = (
+            results_df.with_columns(
+                order=pl.col("group_label").replace_strict(
+                    list(order_map.keys()), list(order_map.values()), default=999
+                )
             )
-        ).sort(["dataset_name", "order"]).drop("order")
+            .sort(["dataset_name", "order"])
+            .drop("order")
+        )
 
     # 1. Metric to plot selector (Multi-select) - Moved to Sidebar
     with st.sidebar:
@@ -287,7 +287,9 @@ def main():
             default=selected_metrics[:1] if selected_metrics else None,
             selection_mode="multi",
             key="results_metrics_to_plot",
-            format_func=lambda m: f":material/candlestick_chart: {NamingManager.get_metric_name(m)}",
+            format_func=lambda m: (
+                f":material/candlestick_chart: {NamingManager.get_metric_name(m)}"
+            ),
         )
 
         # 2. Dataset Selector (Single Select - Acts as Tab)
@@ -328,10 +330,12 @@ def main():
                 "Suspected Outliers": "suspectedoutliers",
                 "None": False,
             }
-            
+
             # Find current label or default
-            current_val = st.session_state.get("points_display", "outliers")
-            current_label = next((k for k, v in points_options.items() if v == current_val), "Outliers Only")
+            current_val = st.session_state["points_display"]
+            current_label = next(
+                (k for k, v in points_options.items() if v == current_val), "Outliers Only"
+            )
 
             selected_label = st.selectbox(
                 "Boxplots Points Display",
@@ -340,16 +344,16 @@ def main():
                 key="points_display_label",
                 help="Choose which data points to show on boxplots.",
             )
-            
+
             # Save actual value if changed
             new_val = points_options[selected_label]
             if new_val != current_val:
                 st.session_state.points_display = new_val
                 SessionState.save_to_config()
-            
+
             # Also get points_display for internal use
             points_display = st.session_state.points_display
-    
+
     st.title(":material/insights: Results")
     st.markdown("View aggregated experiment results by group and dataset.")
 
@@ -358,8 +362,8 @@ def main():
         return
 
     # 3. Boxplots
-    group_renames = st.session_state.get("group_renames", {})
-    dataset_renames = st.session_state.get("dataset_renames", {})
+    group_renames = st.session_state["group_renames"]
+    dataset_renames = st.session_state["dataset_renames"]
 
     render_dataset_boxplots(
         raw_df,
@@ -379,37 +383,35 @@ def main():
     with col1:
         show_mean = st.checkbox(
             "Show Mean",
-            value=st.session_state.get("show_mean", True),
+            value=st.session_state["show_mean"],
             key="show_mean",
             on_change=lambda: SessionState.save_to_config(),
         )
     with col2:
         show_median = st.checkbox(
             "Show Median",
-            value=st.session_state.get("show_median", False),
+            value=st.session_state["show_median"],
             key="show_median",
             on_change=lambda: SessionState.save_to_config(),
         )
     with col3:
         show_std = st.checkbox(
             "Show Std Dev",
-            value=st.session_state.get("show_std", True),
+            value=st.session_state["show_std"],
             key="show_std",
             on_change=lambda: SessionState.save_to_config(),
         )
     with col4:
         show_n = st.checkbox(
             "Show Count",
-            value=st.session_state.get("show_count", False),
+            value=st.session_state["show_count"],
             key="show_count",
             on_change=lambda: SessionState.save_to_config(),
         )
 
     # Filter columns based on options
     cols_to_show = (
-        ["dataset_name", "group_label"]
-        if "dataset_name" in results_df.columns
-        else ["group_label"]
+        ["dataset_name", "group_label"] if "dataset_name" in results_df.columns else ["group_label"]
     )
     for metric in selected_metrics:
         if show_mean and f"{metric}_mean" in results_df.columns:

@@ -1,24 +1,24 @@
 """
 Metrics page for the Statflow application.
 
-This page allows users to explore, filter, and configure experiment metrics.
+Allows users to select, order, rename, and filter experiment metrics before
+proceeding to the Results / Comparison pages.
 
 metrics.py
-├── main()                          # Main page entry point
-└── render_metric_filters()         # Dynamic metric filter UI with sliders
+├── render_metric_filters()         # Dynamic metric filter UI with sliders and NaN toggle
+└── main()                          # Main page entry point
 """
 
-import streamlit as st
 import polars as pl
+import streamlit as st
 
 from statflow.config import SessionState
-from statflow.pages_modules.module_get_started.server_status import ServerStatusManager
 from statflow.functional.dataframes.data_processing import (
-    fetch_experiment_data,
     apply_metric_filters,
+    fetch_experiment_data,
 )
 from statflow.managers.naming import NamingManager
-
+from statflow.shared.server_status import ServerStatusManager
 
 st.set_page_config(
     page_title=f"Metrics - {st.session_state['app_name']}",
@@ -37,7 +37,8 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
     """
     # Filter to only numeric columns (exclude dataset_name and any string IDs)
     metric_cols = [
-        col for col in metric_df.columns 
+        col
+        for col in metric_df.columns
         if col != "dataset_name" and metric_df[col].dtype.is_numeric()
     ]
 
@@ -45,15 +46,16 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
         return metric_df
 
     # Initialize active filters in session state
-    if "active_metric_filters" not in st.session_state or st.session_state.active_metric_filters is None:
+    if (
+        "active_metric_filters" not in st.session_state
+        or st.session_state.active_metric_filters is None
+    ):
         st.session_state.active_metric_filters = []
     if "metric_filter_values" not in st.session_state:
         st.session_state.metric_filter_values = {}
 
     # Add filter using a form to prevent rerun on selectbox change
-    available_to_add = [
-        m for m in metric_cols if m not in st.session_state.active_metric_filters
-    ]
+    available_to_add = [m for m in metric_cols if m not in st.session_state.active_metric_filters]
 
     if available_to_add:
         with st.form("add_metric_filter_form", clear_on_submit=True):
@@ -87,8 +89,12 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
         if col_data.is_empty():
             continue
 
-        min_val = float(col_data.min())
-        max_val = float(col_data.max())
+        # Polars stubs give a wide union for .min()/.max(); assert float explicitly.
+        raw_min = col_data.cast(pl.Float64).min()
+        raw_max = col_data.cast(pl.Float64).max()
+        assert isinstance(raw_min, float) and isinstance(raw_max, float)
+        min_val: float = raw_min
+        max_val: float = raw_max
 
         # Avoid slider error when min == max
         if min_val == max_val:
@@ -102,7 +108,7 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
             default_val = (safe_min, safe_max)
         else:
             default_val = (min_val, max_val)
-        
+
         # Get Nan preference
         include_nans = st.session_state.metric_filter_nans.get(metric, False)
 
@@ -116,7 +122,7 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
                 value=default_val,
                 key=f"metric_filter_{metric}",
             )
-            
+
             # NaNs toggle
             new_nans = st.toggle(
                 "Include NaNs",
@@ -131,17 +137,15 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
                 # We update two keys here
                 SessionState.save_to_config()
                 if new_nans != include_nans:
-                    st.rerun() # Rerun to apply nan change immediately
+                    st.rerun()  # Rerun to apply nan change immediately
 
         with remove_col:
-            st.write("") # Spacer to align button
-            st.write("")
             if st.button(
                 "Metric",
                 key=f"remove_metric_filter_{metric}",
                 help=f"Remove {metric} filter",
                 icon=":material/delete:",
-                type="primary", # Trying primary to make it stand out
+                type="primary",
             ):
                 st.session_state.active_metric_filters.remove(metric)
                 if metric in st.session_state.metric_filter_values:
@@ -150,9 +154,6 @@ def render_metric_filters(metric_df: pl.DataFrame) -> pl.DataFrame:
                     del st.session_state.metric_filter_nans[metric]
                 SessionState.save_to_config()
                 st.rerun()
-
-        # The logic has been shifted to a shared utility for consistency
-        pass
 
     return apply_metric_filters(metric_df)
 
@@ -182,7 +183,7 @@ def main():
         render_selection_pills,
     )
 
-    available_metrics = st.session_state.get("available_metrics", [])
+    available_metrics = st.session_state["available_metrics"]
     if not available_metrics:
         st.warning("No metrics found. Please load experiment data first.")
         return
@@ -232,9 +233,7 @@ def main():
 
     # Check for empty filtered data
     if metric_df.is_empty():
-        st.warning(
-            "No data matches the current filter criteria. Please adjust your filters."
-        )
+        st.warning("No data matches the current filter criteria. Please adjust your filters.")
         return
 
     # Data preview

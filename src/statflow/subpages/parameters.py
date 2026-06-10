@@ -9,13 +9,12 @@ parameters.py
 └── render_parameter_filters()      # Dynamic parameter filter UI
 """
 
-import streamlit as st
 import polars as pl
+import streamlit as st
 
 from statflow.config import SessionState
-from statflow.shared.server_status import ServerStatusManager
 from statflow.functional.dataframes.data_processing import fetch_experiment_data
-
+from statflow.shared.server_status import ServerStatusManager
 
 st.set_page_config(
     page_title=f"Parameters - {st.session_state['app_name']}",
@@ -32,9 +31,7 @@ def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
     Returns:
         Filtered DataFrame.
     """
-    param_cols = [
-        col for col in param_df.columns if col not in ["dataset_name", "group_label"]
-    ]
+    param_cols = [col for col in param_df.columns if col not in ["dataset_name", "group_label"]]
 
     if not param_cols:
         return param_df
@@ -44,9 +41,7 @@ def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
         st.session_state.active_param_filters = []
 
     # Add filter using a form to prevent rerun on selectbox change
-    available_to_add = [
-        p for p in param_cols if p not in st.session_state.active_param_filters
-    ]
+    available_to_add = [p for p in param_cols if p not in st.session_state.active_param_filters]
 
     if available_to_add:
         with st.form("add_filter_form", clear_on_submit=True):
@@ -85,9 +80,7 @@ def render_parameter_filters(param_df: pl.DataFrame) -> pl.DataFrame:
                 key=f"filter_{param}",
             )
         with remove_col:
-            if st.button(
-                "✕", key=f"remove_filter_{param}", help=f"Remove {param} filter"
-            ):
+            if st.button("✕", key=f"remove_filter_{param}", help=f"Remove {param} filter"):
                 st.session_state.active_param_filters.remove(param)
                 st.rerun()
 
@@ -135,11 +128,11 @@ def handle_parameter_selection(
         # Allow reordering of selected parameters
         selected_params = render_item_ordering(
             items=selected_params,
-            session_key="selected_params", # Use same key to overwrite order
+            session_key="selected_params",  # Use same key to overwrite order
             label="Order parameters",
             key_suffix="_param_order",
         )
-    
+
     return selected_params
 
 
@@ -161,9 +154,7 @@ def main():
         st.warning("Please select datasets first.")
         return
 
-    with st.expander(
-        "Parameter Configuration", expanded=True, icon=":material/settings:"
-    ):
+    with st.expander("Parameter Configuration", expanded=True, icon=":material/settings:"):
         selected_params = handle_parameter_selection(
             st.session_state["selected_experiments"], st.session_state["dataset_param"]
         )
@@ -183,17 +174,13 @@ def main():
     if not comparison_params:
         return
 
-    with st.expander(
-        "Filters", expanded=False, icon=":material/filter_list:"
-    ):
+    with st.expander("Filters", expanded=False, icon=":material/filter_list:"):
         st.markdown("Add filters to focus on specific parameter values:")
         param_df = render_parameter_filters(param_df)
 
     # Check for empty filtered data
     if param_df.is_empty():
-        st.warning(
-            "No data matches the current filter criteria. Please adjust your filters."
-        )
+        st.warning("No data matches the current filter criteria. Please adjust your filters.")
         return
 
     # Create group labels
@@ -206,9 +193,7 @@ def main():
 
     param_df = param_df.with_columns(pl.concat_str(exprs).alias("group_label"))
 
-    available_groups = sorted(
-        param_df.get_column("group_label").drop_nulls().unique().to_list()
-    )
+    available_groups = sorted(param_df.get_column("group_label").drop_nulls().unique().to_list())
 
     # Use SORTED key for cache (so A->B and B->A share same cache)
     sorted_cache_key = ",".join(sorted(comparison_params))
@@ -233,9 +218,7 @@ def main():
     selected_groups = st.session_state.get("selected_groups", [])
 
     if selected_groups:
-        param_df = param_df.filter(
-            pl.col("group_label").is_in(st.session_state["selected_groups"])
-        )
+        param_df = param_df.filter(pl.col("group_label").is_in(st.session_state["selected_groups"]))
 
     # Navigation to next page
     st.space()

@@ -15,15 +15,15 @@ Usage:
 
 import streamlit as st
 
+from statflow.components.selection_ui import render_renaming_ui
 from statflow.config import SessionState
 from statflow.pages_modules.module_get_started import (
     dataset_mode,
 )
-from statflow.pages_modules.module_get_started.server_status import handle_server_status
 from statflow.pages_modules.module_get_started.provider_config import (
     render_provider_config,
 )
-from statflow.components.selection_ui import render_renaming_ui
+from statflow.pages_modules.module_get_started.server_status import handle_server_status
 from statflow.shared.server_status import ServerStatusManager
 
 
@@ -70,7 +70,7 @@ def main():
             key="next_to_parameters",
             icon=":material/arrow_forward:",
             icon_position="right",
-            width='content'
+            width="content",
         ):
             st.switch_page("subpages/parameters.py")
 

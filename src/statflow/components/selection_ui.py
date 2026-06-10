@@ -14,16 +14,19 @@ components/selection_ui.py
 └── render_renaming_ui()            # Generic renaming UI
 """
 
-import streamlit as st
 from collections.abc import Callable
+from typing import Literal, cast
+
+import streamlit as st
 from streamlit_sortables import sort_items
+
 from statflow.config import SessionState
 from statflow.managers.naming import NamingManager
 
 
 def reorder_label(label: str, from_order: list[str], to_order: list[str]) -> str:
     """Reorder label parts from one param order to another.
-    
+
     Example: 'a=1, b=2' with from_order=['a','b'] to_order=['b','a'] -> 'b=2, a=1'
     """
     parts = [p.strip() for p in label.split(", ")]
@@ -32,14 +35,14 @@ def reorder_label(label: str, from_order: list[str], to_order: list[str]) -> str
         if "=" in part:
             param_name = part.split("=")[0]
             param_parts[param_name] = part
-    
+
     reordered = [param_parts.get(p, f"{p}=?") for p in to_order if p in param_parts]
     return ", ".join(reordered)
 
 
 class SelectionManager:
     """Unified selection, ordering, and renaming component.
-    
+
     Args:
         options: List of available options.
         session_key: Session state key for selected items.
@@ -51,7 +54,7 @@ class SelectionManager:
         cache_key: Key for caching selections (e.g., sorted param combo).
         cache_param_order: Current param order for label reordering.
     """
-    
+
     def __init__(
         self,
         options: list[str],
@@ -63,7 +66,7 @@ class SelectionManager:
         use_fragment: bool = False,
         cache_key: str | None = None,
         cache_param_order: list[str] | None = None,
-        on_change: Callable | None = None,
+        on_change: Callable[[], None] | None = None,
     ):
         self.options = options
         self.session_key = session_key
@@ -75,9 +78,9 @@ class SelectionManager:
         self.cache_key = cache_key
         self.cache_param_order = cache_param_order
         self.on_change = on_change
-        
+
         self._default = self._compute_default()
-    
+
     def _compute_default(self) -> list[str]:
         """Compute default selection, using cache if available."""
         if not self.cache_key:
@@ -86,40 +89,39 @@ class SelectionManager:
             if current is not None:
                 return [x for x in current if x in self.options] or self.options
             return self.options
-        
+
         # Use cache
         cache = st.session_state.get("group_selections_cache", {})
         cached_data = cache.get(self.cache_key)
-        
+
         if cached_data is None:
             return self.options
-        
+
         cached_groups = cached_data.get("groups", [])
         cached_order = cached_data.get("param_order", self.cache_param_order or [])
-        
+
         # Reorder if param order changed
         if self.cache_param_order and cached_order != self.cache_param_order:
             reordered = [
-                reorder_label(g, cached_order, self.cache_param_order)
-                for g in cached_groups
+                reorder_label(g, cached_order, self.cache_param_order) for g in cached_groups
             ]
         else:
             reordered = cached_groups
-        
+
         # Validate against available options
         valid = [g for g in reordered if g in self.options]
         if not valid:
             return self.options
-        
+
         # Update session state with reordered groups
         st.session_state[self.session_key] = valid
         return valid
-    
+
     def _save_to_cache(self, selected: list[str]) -> None:
         """Save selection to cache if caching is enabled."""
         if not self.cache_key:
             return
-        
+
         cache = st.session_state.get("group_selections_cache", {})
         cache[self.cache_key] = {
             "groups": list(selected),
@@ -131,13 +133,13 @@ class SelectionManager:
     def _get_display_name(self, item: str) -> str:
         """Get display name for item using renames map."""
         return NamingManager.get_name(item, self.renames_session_key)
-    
+
     def _render_selection(self) -> list[str]:
         """Render the pills selection UI."""
         if not self.options:
             st.info("No items available.")
             return []
-        
+
         with st.expander(self.label, expanded=True, icon=":material/category:"):
             selected = st.pills(
                 "Select items",
@@ -148,7 +150,7 @@ class SelectionManager:
                 label_visibility="collapsed",
                 format_func=lambda x: self._get_display_name(x),
             )
-            
+
             if selected is not None:
                 if st.session_state.get(self.session_key) != list(selected):
                     st.session_state[self.session_key] = list(selected)
@@ -156,9 +158,9 @@ class SelectionManager:
                     SessionState.save_to_config()
                     if self.on_change:
                         self.on_change()
-        
+
         return list(selected) if selected else []
-    
+
     def _render_ordering(self, items: list[str]) -> list[str]:
         """Render the ordering UI."""
         ordered = render_item_ordering(
@@ -172,7 +174,7 @@ class SelectionManager:
             if self.on_change:
                 self.on_change()
         return ordered
-    
+
     def _render_renaming(self, items: list[str]) -> None:
         """Render the renaming UI."""
         render_renaming_ui(
@@ -180,30 +182,31 @@ class SelectionManager:
             session_key_renames=self.renames_session_key,
             label="Rename Groups",
         )
-    
+
     def _render_all(self) -> list[str]:
         """Render all components."""
         selected = self._render_selection()
-        
+
         if selected and self.enable_ordering:
             selected = self._render_ordering(selected)
-        
+
         if selected and self.enable_renaming:
             self._render_renaming(selected)
-        
+
         return selected
-    
+
     def render(self) -> list[str]:
         """Render the complete selection UI.
-        
+
         Returns:
             List of selected items (in order if ordering enabled).
         """
         if self.use_fragment:
+
             @st.fragment
             def fragment_wrapper():
                 return self._render_all()
-            
+
             fragment_wrapper()
             return st.session_state.get(self.session_key, [])
         else:
@@ -252,16 +255,22 @@ def render_item_selector(
             return NamingManager.get_name(option, renames_session_key)
         return option
 
-    selected_items = st.pills(
-        label,
-        options=options,
-        default=default,
-        key=f"selector_{session_key}{key_suffix}",
-        selection_mode="multi",
-        label_visibility="collapsed",
-        format_func=format_option,
+    # st.pills with selection_mode="multi" returns list[V]; ty can't resolve V=str
+    # from the overload, so we cast the result explicitly.
+    selected_items: list[str] = cast(
+        list[str],
+        st.pills(
+            label,
+            options=options,
+            default=default,
+            key=f"selector_{session_key}{key_suffix}",
+            selection_mode="multi",
+            label_visibility="collapsed",
+            format_func=format_option,
+        )
+        or [],
     )
-    
+
     # Update session state directly
     if st.session_state.get(session_key) != selected_items:
         st.session_state[session_key] = selected_items
@@ -276,8 +285,8 @@ def render_selection_pills(
     *,
     label: str,
     format_func: Callable[[str], str] | None = None,
-    on_change: Callable | None = None,
-    label_visibility: str = "visible",
+    on_change: Callable[[], None] | None = None,
+    label_visibility: Literal["visible", "hidden", "collapsed"] = "visible",
 ) -> list[str]:
     """Controlled multi-select pills with Select all / Deselect all.
 
@@ -312,9 +321,7 @@ def render_selection_pills(
             [x for x in saved if x in options] if saved else list(options)
         )
     else:
-        st.session_state[widget_key] = [
-            x for x in st.session_state[widget_key] if x in options
-        ]
+        st.session_state[widget_key] = [x for x in st.session_state[widget_key] if x in options]
 
     def _select_all() -> None:
         st.session_state[widget_key] = list(options)
@@ -386,11 +393,10 @@ def render_item_ordering(
         return items
 
     with st.expander(label, expanded=False, icon=":material/swap_vert:"):
-    
         # helper to get display name
         def get_display_name(item: str) -> str:
             if renames_session_key:
-                 return NamingManager.get_name(item, renames_session_key)
+                return NamingManager.get_name(item, renames_session_key)
             return item
 
         # Map display names to original items to reverse lookup later
@@ -398,26 +404,28 @@ def render_item_ordering(
         # or just take the first match. Ideally display names should be unique.
         display_map = {get_display_name(item): item for item in items}
         display_items = [get_display_name(item) for item in items]
-        
+
         # Generate a unique key based on content to force update when items change
         # Include length and hash of sorted tuple to detect content changes efficiently
         # Use display_items to ensure widget updates when names are edited
-        sort_key = f"order_{session_key}{key_suffix}_{len(items)}_{hash(tuple(sorted(display_items)))}"
-        
+        sort_key = (
+            f"order_{session_key}{key_suffix}_{len(items)}_{hash(tuple(sorted(display_items)))}"
+        )
+
         ordered_display_items = sort_items(display_items, key=sort_key)
-    
+
     # Map back to original items
     ordered_items = [display_map[d] for d in ordered_display_items if d in display_map]
-    
+
     # Check if any items were lost (e.g. if display names changed dynamically), fallback to generic
     if len(ordered_items) != len(items):
         ordered_items = items
-    
+
     # Update session state
     if st.session_state.get(session_key) != ordered_items:
         st.session_state[session_key] = ordered_items
         SessionState.save_to_config()
-        
+
     return ordered_items
 
 
@@ -437,24 +445,24 @@ def render_renaming_ui(
     """
     # Get current renames
     saved_renames: dict = st.session_state.get(session_key_renames, {})
-    
+
     # Callback to handle updates immediately before script rerun
     def _update_rename(item_key: str, key_type: str, widget_key: str):
         new_value = st.session_state[widget_key]
         renames = st.session_state.get(session_key_renames, {})
-        
+
         # Ensure entry exists as dict
         if item_key not in renames:
-             renames[item_key] = {"display_name": item_key, "latex_name": item_key}
+            renames[item_key] = {"display_name": item_key, "latex_name": item_key}
         elif isinstance(renames[item_key], str):
-             renames[item_key] = {"display_name": renames[item_key], "latex_name": renames[item_key]}
-        
+            renames[item_key] = {"display_name": renames[item_key], "latex_name": renames[item_key]}
+
         # Update specific field
         if key_type == "display":
             renames[item_key]["display_name"] = new_value
         elif key_type == "latex":
             renames[item_key]["latex_name"] = new_value
-            
+
         st.session_state[session_key_renames] = renames
         SessionState.save_to_config()
 
@@ -484,7 +492,7 @@ def render_renaming_ui(
                 current_latex = item
 
             cols = st.columns(col_sizes, vertical_alignment="center")
-            
+
             # Column 1: Original name
             cols[0].code(item)
 
@@ -497,7 +505,7 @@ def render_renaming_ui(
                 label_visibility="collapsed",
                 icon=":material/edit:",
                 on_change=_update_rename,
-                args=(item, "display", display_key)
+                args=(item, "display", display_key),
             )
 
             # Column 3: LaTeX name input
@@ -509,7 +517,7 @@ def render_renaming_ui(
                 label_visibility="collapsed",
                 icon=":material/edit:",
                 on_change=_update_rename,
-                args=(item, "latex", latex_key)
+                args=(item, "latex", latex_key),
             )
 
             # Column 4: LaTeX preview

@@ -49,9 +49,7 @@ def get_provider(name: str) -> RunProvider:
     if name not in _REGISTRY:
         module = _PROVIDER_MODULES.get(name)
         if module is None:
-            raise KeyError(
-                f"Unknown provider {name!r}; available: {available_providers()}"
-            )
+            raise KeyError(f"Unknown provider {name!r}; available: {available_providers()}")
         importlib.import_module(module)
 
     if name not in _REGISTRY:
