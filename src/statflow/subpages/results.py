@@ -21,7 +21,7 @@ from statflow.functional.dataframes.data_processing import (
     fetch_experiment_data,
 )
 from statflow.managers.naming import NamingManager
-from statflow.pages_modules.module_get_started.server_status import ServerStatusManager
+from statflow.shared.server_status import ServerStatusManager
 
 
 def get_combined_data(

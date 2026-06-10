@@ -15,7 +15,7 @@ components/selection_ui.py
 """
 
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, cast
 
 import streamlit as st
 from streamlit_sortables import sort_items
@@ -255,8 +255,11 @@ def render_item_selector(
             return NamingManager.get_name(option, renames_session_key)
         return option
 
-    selected_items: list[str] = (
-        st.pills(  # type: ignore[assignment]  # st.pills multi → list[V]
+    # st.pills with selection_mode="multi" returns list[V]; ty can't resolve V=str
+    # from the overload, so we cast the result explicitly.
+    selected_items: list[str] = cast(
+        list[str],
+        st.pills(
             label,
             options=options,
             default=default,
@@ -265,7 +268,7 @@ def render_item_selector(
             label_visibility="collapsed",
             format_func=format_option,
         )
-        or []
+        or [],
     )
 
     # Update session state directly

@@ -12,6 +12,8 @@ experiment_selector.py
 └── select_experiment_as_datasets()  # Handle experiment selection as datasets
 """
 
+from typing import cast
+
 import streamlit as st
 
 from statflow.loggers.registry import get_provider
@@ -34,16 +36,17 @@ def select_experiment_as_datasets() -> list[str] | None:
         return None
 
     valid_default = [d for d in st.session_state["selected_datasets"] if d in experiment_names]
-    # st.pills with selection_mode="multi" returns list[V]; annotate to help ty.
-    selected_datasets: list[str] = (
-        st.pills(  # type: ignore[assignment]
+    # st.pills with selection_mode="multi" returns list[V]; cast to resolve type.
+    selected_datasets: list[str] = cast(
+        list[str],
+        st.pills(
             "Select Datasets",
             options=experiment_names,
             default=valid_default,
             key="dataset_selector_from_experiments",
             selection_mode="multi",
         )
-        or []
+        or [],
     )
 
     # Update session state
@@ -83,9 +86,10 @@ def select_experiment(
 
     st.markdown(f"#### {label}")
     valid_default = [e for e in st.session_state["selected_experiments"] if e in experiment_names]
-    # st.pills with selection_mode="multi" returns list[V]; annotate to help ty.
-    selected_experiments: list[str] = (
-        st.pills(  # type: ignore[assignment]
+    # st.pills with selection_mode="multi" returns list[V]; cast to resolve type.
+    selected_experiments: list[str] = cast(
+        list[str],
+        st.pills(
             label,
             options=experiment_names,
             default=valid_default,
@@ -93,7 +97,7 @@ def select_experiment(
             selection_mode="multi",
             label_visibility="collapsed",
         )
-        or []
+        or [],
     )
     st.space()
 
