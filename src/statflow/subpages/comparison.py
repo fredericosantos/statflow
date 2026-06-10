@@ -9,7 +9,8 @@ comparison.py
 ├── main()                          # Main page entry point
 ├── render_comparison_boxplots()    # Boxplot subplots with trophy annotations
 ├── format_cell()                   # Format value with std and significance
-└── _render_direction_control()     # Per-metric better-is-lower/higher control
+├── _render_direction_control()     # Per-metric better-is-lower/higher control
+└── _render_latex_export()          # LaTeX export expander at page bottom
 """
 
 import numpy as np
@@ -26,8 +27,11 @@ from statflow.functional.dataframes.data_processing import (
     fetch_experiment_data,
 )
 from statflow.functional.statistics import (
+    a12,
+    a12_magnitude,
     build_comparison_table,
     check_significance,
+    comparison_table_to_latex,
 )
 from statflow.managers.naming import NamingManager
 from statflow.shared.server_status import ServerStatusManager
@@ -159,6 +163,17 @@ def _render_direction_control(metric: str | None) -> bool:
         SessionState.save_key_to_config("metric_directions")
 
     return choice == "Higher"
+
+
+def _render_latex_export(display_df: pl.DataFrame, metric: str, maximize: bool) -> None:
+    """Render a LaTeX export expander with a copyable code block."""
+    with st.expander("LaTeX export", icon=":material/code:"):
+        caption = f"Comparison table — {NamingManager.get_metric_name(metric)}"
+        label = f"tab:comparison-{metric}"
+        latex = comparison_table_to_latex(
+            display_df, caption=caption, label=label, maximize=maximize
+        )
+        st.code(latex, language="latex")
 
 
 def main():
@@ -485,34 +500,50 @@ def main():
                     else:
                         row_data[display_name] = "-"
 
+                # A12 effect size: our_method vs each competitor for this dataset
+                our_vals = (
+                    dataset_data_raw.filter(pl.col("group_label") == our_method)
+                    .get_column(comparison_metric)
+                    .drop_nulls()
+                    .to_numpy()
+                )
+                for comp in their_groups:
+                    comp_display = NamingManager.get_group_name(comp)
+                    a12_col = f"A12 vs {comp_display}"
+                    comp_vals = (
+                        dataset_data_raw.filter(pl.col("group_label") == comp)
+                        .get_column(comparison_metric)
+                        .drop_nulls()
+                        .to_numpy()
+                    )
+                    if len(our_vals) > 0 and len(comp_vals) > 0:
+                        a12_val = a12(our_vals, comp_vals, maximize=maximize)
+                        mag = a12_magnitude(a12_val)
+                        row_data[a12_col] = f"{a12_val:.2f} ({mag})"
+                    else:
+                        row_data[a12_col] = "-"
+
                 focused_display_data.append(row_data)
 
-            # Add Total row
+            # Add Total row (method columns only, no A12)
             total_row = {"Dataset": "Total"}
             for name, count in column_trophies.items():
                 total_row[name] = f"{count} 🥇"
+            # Fill A12 columns with empty string in the total row
+            for comp in their_groups:
+                comp_display = NamingManager.get_group_name(comp)
+                total_row[f"A12 vs {comp_display}"] = ""
             focused_display_data.append(total_row)
 
         display_df = pl.DataFrame(focused_display_data)
 
-        # # Pivot if requested (transpose: methods as rows, datasets as columns)
-        # if pivot_table:
-        #     # Melt and pivot
-        #     method_cols = [NamingManager.get_group_name(m) for m in all_methods]
-        #     melted = display_df.unpivot(
-        #         index="Dataset",
-        #         on=method_cols,
-        #         variable_name="Method",
-        #         value_name="Value",
-        #     )
-        #     display_df = melted.pivot(
-        #         on="Dataset",
-        #         index="Method",
-        #         values="Value",
-        #     )
-
         # Display with styling
         st.dataframe(display_df, width="stretch", hide_index=True, height="content")
+
+        # LaTeX export expander (spec §2.1)
+        # Build a clean version of the table without the "Total" row for export
+        export_df = display_df.filter(pl.col("Dataset") != "Total")
+        _render_latex_export(export_df, comparison_metric, maximize)
 
         # 7. Visual Comparison
         st.divider()
