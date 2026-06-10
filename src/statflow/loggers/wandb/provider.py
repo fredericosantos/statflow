@@ -76,7 +76,10 @@ def _api_key() -> str:
     env = os.environ.get("WANDB_API_KEY")
     if env:
         return env
-    auth = netrc.netrc().authenticators(_WANDB_HOST)
+    try:
+        auth = netrc.netrc().authenticators(_WANDB_HOST)
+    except FileNotFoundError:
+        auth = None
     if not auth or not auth[2]:
         raise RuntimeError(
             f"No W&B API key: set WANDB_API_KEY or add a '{_WANDB_HOST}' entry to ~/.netrc"
