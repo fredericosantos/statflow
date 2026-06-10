@@ -111,6 +111,14 @@ PERSISTABLE_KEYS = [
     "comparison_our_groups",
     "comparison_decimals",
     "metric_directions",
+    # Overall page
+    "cross_dataset_agg",
+    # Plots page
+    "plot_agg",
+    "plot_dataset_scope",
+    "plot_axis_limits",
+    "plot_log_x",
+    "plot_log_y",
     # Application settings
     "app_name",
     "provider",
@@ -179,6 +187,14 @@ DEFAULT_STATE: dict[str, Any] = {
     "custom_colors": {},
     "custom_symbols": {},
     "points_display": "outliers",
+    # Overall page
+    "cross_dataset_agg": "median",
+    # Plots page
+    "plot_agg": "median",
+    "plot_dataset_scope": "Aggregate across datasets",
+    "plot_axis_limits": {},
+    "plot_log_x": False,
+    "plot_log_y": False,
     # Application settings
     "app_name": "Experiment Viewer",
     "provider": "mlflow",
