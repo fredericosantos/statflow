@@ -10,6 +10,8 @@ dataset_mode.py
 └── _find_dataset_parameter_suggestion()    # Find best dataset parameter suggestion
 """
 
+from typing import cast
+
 import streamlit as st
 
 from statflow.loggers.runs_cache import RunsCache
@@ -56,7 +58,7 @@ def render_dataset_mode_and_selections():
         width="stretch",
     )
 
-    dataset_mode = mode_map.get(dataset_mode_display, "experiment")
+    dataset_mode = mode_map.get(cast(str, dataset_mode_display), "experiment")
     st.session_state["dataset_mode"] = dataset_mode
 
     if dataset_mode == "experiment":

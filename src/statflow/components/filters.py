@@ -18,6 +18,8 @@ Usage:
     )
 """
 
+from typing import cast
+
 import streamlit as st
 
 from statflow.config import SessionState
@@ -78,12 +80,15 @@ def render_pills_filter(
         return (selected,)
 
     else:  # multi
-        selected = st.pills(
-            label,
-            options=sorted(options),
-            selection_mode="multi",
-            default=list(default_values) if default_values else options,
-            help=help_text,
+        selected = cast(
+            list[str],
+            st.pills(
+                label,
+                options=sorted(options),
+                selection_mode="multi",
+                default=list(default_values) if default_values else options,
+                help=help_text,
+            ),
         )
 
         # Return None if all are selected (no filtering)
@@ -160,15 +165,18 @@ def render_group_filter() -> list[str]:
 
     with st.expander("Group Filter", expanded=False, icon=":material/filter_alt:"):
         # We use st.pills for the "second level" filtering
-        selected = st.pills(
-            "Show only groups:",
-            options=selected_groups,
-            default=active_default,
-            format_func=NamingManager.get_group_name,
-            selection_mode="multi",
-            key="group_filter_widget",
-            help="Sub-select groups from those chosen on the Parameters page.",
-            label_visibility="collapsed",
+        selected = cast(
+            list[str],
+            st.pills(
+                "Show only groups:",
+                options=selected_groups,
+                default=active_default,
+                format_func=NamingManager.get_group_name,
+                selection_mode="multi",
+                key="group_filter_widget",
+                help="Sub-select groups from those chosen on the Parameters page.",
+                label_visibility="collapsed",
+            ),
         )
 
         # Update transient session state
