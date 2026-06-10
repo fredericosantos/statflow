@@ -19,39 +19,54 @@ from statflow.pages_modules.module_get_started.experiment_selector import (
 from statflow.pages_modules.module_get_started.dataset_config import (
     handle_dataset_selection,
 )
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.runs_cache import RunsCache
 from .constants import DatasetParamMode
 
 
 def render_dataset_mode_and_selections():
     """Main entry point for dataset mode selection and related flows."""
+    st.markdown("#### Dataset Mode")
+    st.caption("Choose how datasets are identified in your experiments")
+    
     options = [
-        "Dataset names are experiment names",
-        "Single dataset",
-        "Multiple datasets defined by parameter",
+        ":material/folder: By Experiment",
+        ":material/description: Single Dataset",
+        ":material/tune: By Parameter",
     ]
+    
+    # Map display options to internal values
+    mode_map = {
+        ":material/folder: By Experiment": "experiment",
+        ":material/description: Single Dataset": "single",
+        ":material/tune: By Parameter": "parameter",
+    }
+    reverse_map = {v: k for k, v in mode_map.items()}
 
-    current = st.session_state.get("dataset_mode", options[0])
-    if current not in options:
-        current = options[0]
+    current_internal = st.session_state.get("dataset_mode", "experiment")
+    current_display = reverse_map.get(current_internal, options[0])
 
-    dataset_mode = st.radio(
-        "Choose how datasets are identified in your experiments. ",
+    dataset_mode_display = st.pills(
+        "Mode",
         options=options,
-        index=options.index(current),
-        key="dataset_mode_radio",
+        default=current_display,
+        selection_mode="single",
+        key="dataset_mode_pills",
+        label_visibility="collapsed",
+        width="stretch"
     )
+    
+    dataset_mode = mode_map.get(dataset_mode_display, "experiment")
     st.session_state["dataset_mode"] = dataset_mode
 
-    if dataset_mode == "Dataset names are experiment names":
+    if dataset_mode == "experiment":
         selected_datasets = select_experiment_as_datasets()
         selected_experiments = selected_datasets
         dataset_param = DatasetParamMode.EXPERIMENT_NAMES_AS_DATASETS
-    elif dataset_mode == "Single dataset":
+    elif dataset_mode == "single":
         selected_experiments = select_experiment()
         selected_datasets = ["Default"]
         dataset_param = DatasetParamMode.SINGLE_DATASET_MODE
-    else:
+    else:  # parameter
         selected_experiments = select_experiment()
         if not selected_experiments:
             st.info("Please select at least one experiment to proceed.")
@@ -93,7 +108,7 @@ def handle_dataset_parameter_selection(
         st.session_state.dataset_param = None
         return None
 
-    if dataset_mode == "Multiple datasets defined by parameter":
+    if dataset_mode == "parameter":
         suggested_default = _find_dataset_parameter_suggestion(available_params)
         st.session_state.dataset_param = suggested_default
         return suggested_default

@@ -1,14 +1,17 @@
 """
-Centralized manager for MLflow runs data with Polars caching.
+Centralized, provider-agnostic store for run data with Polars caching.
 
-This module provides a single point of access for fetching, caching,
-and querying MLflow run data. Supports incremental loading with
-timestamp-based pagination.
+A single point of access for fetching, caching, and querying runs. Fetching is
+delegated to the active RunProvider (MLflow, W&B, ...) selected by the
+`provider` session-state key; RunsCache owns merging, dedup, pagination cursors,
+and the derived `available_params` / `available_metrics`. It never touches a
+backend API directly — every provider returns the same canonical wide DataFrame
+(see `loggers/base.py`).
 
 runs_cache.py
 ├── RunsCache                     # Main cache manager class
 │   ├── load_runs()              # Initial load of runs
-│   ├── load_more_runs()         # Incremental fetch using timestamp pagination
+│   ├── load_more_runs()         # Incremental fetch using pagination cursors
 │   ├── get_runs()               # Get cached DataFrame
 │   ├── get_available_params()   # Extract param column names
 │   ├── get_available_metrics()  # Extract metric column names
@@ -19,15 +22,17 @@ runs_cache.py
 
 import polars as pl
 import streamlit as st
-import mlflow
+
+from statflow.loggers.base import METRIC_PREFIX, PARAM_PREFIX, RUN_ID_COL
+from statflow.loggers.registry import get_provider
 
 
 class RunsCache:
-    """Centralized manager for MLflow runs data with Polars caching."""
+    """Provider-agnostic store for run data with Polars caching."""
 
     CACHE_KEY = "_runs_cache_df"
     EXPERIMENTS_KEY = "_runs_cache_experiments"
-    TIMESTAMPS_KEY = "_runs_cache_timestamps"  # Per-experiment last timestamp
+    CURSORS_KEY = "_runs_cache_cursors"  # Per-experiment pagination cursors
 
     @classmethod
     def load_runs(
@@ -56,14 +61,17 @@ class RunsCache:
         if set(cached_experiments) != set(experiments) or force_refresh:
             cls.clear_cache()
             st.session_state[cls.EXPERIMENTS_KEY] = list(experiments)
-            st.session_state[cls.TIMESTAMPS_KEY] = {}
+            st.session_state[cls.CURSORS_KEY] = {}
 
-        # If already have data, return it
+        # If already have data, return it (re-deriving params/metrics in case the
+        # session lost them, e.g. after a provider switch or a fresh page load).
         if (
             cls.CACHE_KEY in st.session_state
             and not st.session_state[cls.CACHE_KEY].is_empty()
         ):
-            return st.session_state[cls.CACHE_KEY]
+            df = st.session_state[cls.CACHE_KEY]
+            cls._refresh_derived(df)
+            return df
 
         # Initial fetch
         return cls._fetch_runs(experiments, max_results)
@@ -97,54 +105,17 @@ class RunsCache:
         experiments: list[str],
         max_results: int,
     ) -> pl.DataFrame:
-        """Internal: Fetch runs from MLflow with pagination."""
-        mlflow.set_tracking_uri(
-            st.session_state.get("mlflow_server_url", "http://0.0.0.0:5000")
-        )
+        """Internal: fetch a page of runs via the active provider, then merge."""
+        provider = get_provider(st.session_state["provider"])
+        cursors = st.session_state.get(cls.CURSORS_KEY, {})
 
-        timestamps = st.session_state.get(cls.TIMESTAMPS_KEY, {})
-        all_new_runs = []
+        new_df, cursors = provider.fetch_runs(experiments, max_results, cursors)
+        st.session_state[cls.CURSORS_KEY] = cursors
 
-        for exp_name in experiments:
-            filter_string = ""
-            if exp_name in timestamps:
-                last_time = timestamps[exp_name]
-                filter_string = f"attributes.start_time < {last_time}"
-
-            try:
-                exp = mlflow.get_experiment_by_name(exp_name)
-                if not exp:
-                    continue
-
-                runs_pdf = mlflow.search_runs(
-                    experiment_ids=[exp.experiment_id],
-                    filter_string=filter_string,
-                    max_results=max_results,
-                    order_by=["attributes.start_time DESC"],
-                )
-
-                if runs_pdf is not None and not runs_pdf.empty:
-                    runs_df = pl.from_pandas(runs_pdf)
-                    all_new_runs.append(runs_df)
-
-                    # Update timestamp cursor for this experiment
-                    if "start_time" in runs_df.columns:
-                        min_val = runs_df.get_column("start_time").min()
-                        if min_val is not None:
-                            timestamps[exp_name] = int(min_val.timestamp() * 1000)
-
-            except Exception:
-                continue
-
-        st.session_state[cls.TIMESTAMPS_KEY] = timestamps
-
-        if not all_new_runs:
+        if new_df.is_empty():
             if cls.CACHE_KEY not in st.session_state:
                 st.session_state[cls.CACHE_KEY] = pl.DataFrame()
             return st.session_state[cls.CACHE_KEY]
-
-        # Combine new runs - use align for schema differences
-        new_df = pl.concat(all_new_runs, how="align")
 
         # Merge with existing cache
         existing_df = st.session_state.get(cls.CACHE_KEY, pl.DataFrame())
@@ -154,16 +125,19 @@ class RunsCache:
             combined_df = pl.concat([existing_df, new_df], how="align")
 
         # Deduplicate by run_id to avoid duplicates
-        if "run_id" in combined_df.columns:
-            combined_df = combined_df.unique(subset=["run_id"], keep="first")
+        if RUN_ID_COL in combined_df.columns:
+            combined_df = combined_df.unique(subset=[RUN_ID_COL], keep="first")
 
         st.session_state[cls.CACHE_KEY] = combined_df
-
-        # Update derived state
-        st.session_state["available_params"] = cls._extract_params(combined_df)
-        st.session_state["available_metrics"] = cls._extract_metrics(combined_df)
+        cls._refresh_derived(combined_df)
 
         return combined_df
+
+    @classmethod
+    def _refresh_derived(cls, df: pl.DataFrame) -> None:
+        """Recompute the session's available_params / available_metrics from `df`."""
+        st.session_state["available_params"] = cls._extract_params(df)
+        st.session_state["available_metrics"] = cls._extract_metrics(df)
 
     @classmethod
     def get_runs(cls) -> pl.DataFrame:
@@ -206,7 +180,7 @@ class RunsCache:
         if df.is_empty():
             return []
 
-        col_name = f"params.{param}"
+        col_name = f"{PARAM_PREFIX}{param}"
         if col_name not in df.columns:
             return []
 
@@ -230,7 +204,7 @@ class RunsCache:
         if df.is_empty() or not datasets:
             return df
 
-        col_name = f"params.{dataset_param}"
+        col_name = f"{PARAM_PREFIX}{dataset_param}"
         if col_name not in df.columns:
             return df
 
@@ -239,24 +213,26 @@ class RunsCache:
     @classmethod
     def clear_cache(cls) -> None:
         """Clear the runs cache from session state."""
-        for key in [cls.CACHE_KEY, cls.EXPERIMENTS_KEY, cls.TIMESTAMPS_KEY]:
+        for key in [cls.CACHE_KEY, cls.EXPERIMENTS_KEY, cls.CURSORS_KEY]:
             if key in st.session_state:
                 del st.session_state[key]
 
     @classmethod
     def _extract_params(cls, df: pl.DataFrame) -> list[str]:
         """Extract parameter names from DataFrame columns."""
-        prefix = "params."
         return sorted([
-            col[len(prefix) :] for col in df.columns if col.startswith(prefix)
+            col[len(PARAM_PREFIX) :]
+            for col in df.columns
+            if col.startswith(PARAM_PREFIX)
         ])
 
     @classmethod
     def _extract_metrics(cls, df: pl.DataFrame) -> list[str]:
         """Extract metric names from DataFrame columns."""
-        prefix = "metrics."
         return sorted([
-            col[len(prefix) :] for col in df.columns if col.startswith(prefix)
+            col[len(METRIC_PREFIX) :]
+            for col in df.columns
+            if col.startswith(METRIC_PREFIX)
         ])
 
     @classmethod

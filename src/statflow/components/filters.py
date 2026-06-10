@@ -25,8 +25,6 @@ from statflow.config import SessionState
 # Default values
 DEFAULT_SHOW_MEAN = False
 DEFAULT_USE_CUSTOM_COLORS = True
-DEFAULT_GRAPH_WIDTH = 800
-DEFAULT_GRAPH_HEIGHT = 600
 DEFAULT_POINTS_DISPLAY = "outliers"
 DEFAULT_SHOW_ERROR_BARS = True
 
@@ -138,3 +136,57 @@ def render_dataset_selector(
         raise ValueError(
             f"Invalid selection_mode: {selection_mode}. Must be 'single' or 'multi'."
         )
+
+
+def render_group_filter() -> list[str]:
+    """Render a persistent group filter in the sidebar.
+
+    This filter allows users to sub-select from the groups already selected
+    on the Parameters page. The selection is stored in st.session_state.active_group_filters
+    and is shared across functional pages.
+
+    Returns:
+        List of explicitly selected group labels, or the full list of selected_groups
+        if no specific filtering is applied.
+    """
+    from statflow.managers.naming import NamingManager
+
+    selected_groups = st.session_state.get("selected_groups", [])
+    if not selected_groups:
+        return []
+
+    # Initialize active_group_filters if needed (though DEFAULT_STATE should have it)
+    if "active_group_filters" not in st.session_state:
+        st.session_state.active_group_filters = []
+
+    # Clamp stale filter entries to the currently selected groups.
+    active_default = [
+        g for g in st.session_state.active_group_filters if g in selected_groups
+    ]
+
+    with st.expander("Group Filter", expanded=False, icon=":material/filter_alt:"):
+        # We use st.pills for the "second level" filtering
+        selected = st.pills(
+            "Show only groups:",
+            options=selected_groups,
+            default=active_default,
+            format_func=NamingManager.get_group_name,
+            selection_mode="multi",
+            key="group_filter_widget",
+            help="Sub-select groups from those chosen on the Parameters page.",
+            label_visibility="collapsed",
+        )
+        
+        # Update transient session state
+        st.session_state.active_group_filters = selected
+        
+        # We ensure the return value respects the original order of selected_groups
+        # because st.pills returns items in the order they were clicked.
+        if not selected:
+             return selected_groups
+             
+        # Sort selection by original index
+        order_map = {g: i for i, g in enumerate(selected_groups)}
+        sorted_selection = sorted(selected, key=lambda x: order_map.get(x, 999))
+        
+        return sorted_selection

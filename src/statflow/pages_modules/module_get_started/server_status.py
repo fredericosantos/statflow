@@ -20,36 +20,51 @@ from statflow.config import SessionState
 
 
 def handle_server_status(server_status_manager: ServerStatusManager) -> bool:
-    """Handle MLflow server status checking and database viewer.
+    """Handle the "provider unreachable" state with provider-appropriate help.
 
     Returns:
-        bool: True if server is running, False otherwise
+        bool: True if the provider is reachable, False otherwise.
     """
-    # Check MLflow server status, use cached if available
     server_running = server_status_manager.check_status()
+    if server_running:
+        return True
 
-    # If server is not running, show connection options
-    if not server_running:
-        tab_mlflow, tab_db = st.tabs(["Connect to MLflow", "Database Viewer"])
+    if st.session_state["provider"] == "wandb":
+        _handle_wandb_unreachable()
+    else:
+        _handle_mlflow_unreachable()
+    return False
 
-        with tab_mlflow:
-            st.error("MLflow server is not running", icon=":material/power_off:")
-            if st.button(
-                icon=":material/refresh:",
-                label="Recheck server status",
-                key="recheck_mlflow_server_status",
-            ):
-                # Force recheck by clearing cached status
-                if "server_running" in st.session_state:
-                    del st.session_state["server_running"]
-                st.rerun()
 
-        with tab_db:
-            _render_database_viewer()
+def _recheck_button(key: str) -> None:
+    """A button that clears the cached status and forces a recheck."""
+    if st.button("Recheck connection", icon=":material/refresh:", key=key):
+        st.session_state.pop("server_running", None)
+        st.rerun()
 
-        return False
 
-    return True
+def _handle_wandb_unreachable() -> None:
+    """W&B auth failed — point at the netrc/token requirement (no DB viewer)."""
+    st.error("Weights & Biases is not reachable", icon=":material/power_off:")
+    st.markdown(
+        "Authentication uses the `api.wandb.ai` key in `~/.netrc` "
+        "(or the `WANDB_API_KEY` environment variable). Verify it is present and "
+        "valid, then recheck. Set the entity in the sidebar Data Source panel."
+    )
+    _recheck_button("recheck_wandb_status")
+
+
+def _handle_mlflow_unreachable() -> None:
+    """MLflow server down — offer a recheck and the sqlite database viewer."""
+    tab_mlflow, tab_db = st.tabs(["Connect to MLflow", "Database Viewer"])
+
+    with tab_mlflow:
+        st.error("MLflow server is not running", icon=":material/power_off:")
+        st.markdown("Set the tracking URI in the sidebar Data Source panel.")
+        _recheck_button("recheck_mlflow_server_status")
+
+    with tab_db:
+        _render_database_viewer()
 
 
 def _render_database_viewer() -> None:

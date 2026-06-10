@@ -9,12 +9,16 @@ This module provides reusable Streamlit components for:
 components/selection_ui.py
 ├── SelectionManager                # Unified selection, ordering, renaming component
 ├── render_item_selector()          # Generic pill/multiselect for items
+├── render_selection_pills()        # Controlled multi-select + Select/Deselect all
 ├── render_item_ordering()          # Generic item reordering UI
 └── render_renaming_ui()            # Generic renaming UI
 """
 
 import streamlit as st
+from collections.abc import Callable
 from streamlit_sortables import sort_items
+from statflow.config import SessionState
+from statflow.managers.naming import NamingManager
 
 
 def reorder_label(label: str, from_order: list[str], to_order: list[str]) -> str:
@@ -59,6 +63,7 @@ class SelectionManager:
         use_fragment: bool = False,
         cache_key: str | None = None,
         cache_param_order: list[str] | None = None,
+        on_change: Callable | None = None,
     ):
         self.options = options
         self.session_key = session_key
@@ -69,6 +74,7 @@ class SelectionManager:
         self.use_fragment = use_fragment
         self.cache_key = cache_key
         self.cache_param_order = cache_param_order
+        self.on_change = on_change
         
         self._default = self._compute_default()
     
@@ -120,6 +126,11 @@ class SelectionManager:
             "param_order": self.cache_param_order or [],
         }
         st.session_state["group_selections_cache"] = cache
+        SessionState.save_to_config()
+
+    def _get_display_name(self, item: str) -> str:
+        """Get display name for item using renames map."""
+        return NamingManager.get_name(item, self.renames_session_key)
     
     def _render_selection(self) -> list[str]:
         """Render the pills selection UI."""
@@ -135,24 +146,31 @@ class SelectionManager:
                 selection_mode="multi",
                 key=f"selector_{self.session_key}",
                 label_visibility="collapsed",
+                format_func=lambda x: self._get_display_name(x),
             )
             
             if selected is not None:
-                st.session_state[self.session_key] = list(selected)
-                self._save_to_cache(selected)
+                if st.session_state.get(self.session_key) != list(selected):
+                    st.session_state[self.session_key] = list(selected)
+                    self._save_to_cache(selected)
+                    SessionState.save_to_config()
+                    if self.on_change:
+                        self.on_change()
         
         return list(selected) if selected else []
     
     def _render_ordering(self, items: list[str]) -> list[str]:
         """Render the ordering UI."""
-        if not items:
-            return items
-        
-        with st.expander("Order Items", expanded=False, icon=":material/swap_vert:"):
-            sort_key = f"order_{self.session_key}_{len(items)}_{hash(tuple(sorted(items)))}"
-            ordered = sort_items(items, key=sort_key)
-            st.session_state[self.session_key] = ordered
-        
+        ordered = render_item_ordering(
+            items=items,
+            session_key=self.session_key,
+            label="Order Groups",
+            renames_session_key=self.renames_session_key,
+        )
+        if list(ordered) != list(items):
+            self._save_to_cache(ordered)
+            if self.on_change:
+                self.on_change()
         return ordered
     
     def _render_renaming(self, items: list[str]) -> None:
@@ -160,7 +178,7 @@ class SelectionManager:
         render_renaming_ui(
             items=items,
             session_key_renames=self.renames_session_key,
-            label="Rename Items",
+            label="Rename Groups",
         )
     
     def _render_all(self) -> list[str]:
@@ -198,6 +216,7 @@ def render_item_selector(
     label: str = "Select Items",
     default: list[str] | None = None,
     key_suffix: str = "",
+    renames_session_key: str | None = None,
 ) -> list[str]:
     """Render a generic item selector UI.
 
@@ -215,6 +234,9 @@ def render_item_selector(
         st.info("No items available.")
         return []
 
+    # Render section header
+    st.markdown(f"#### {label}")
+
     # Determine default selection
     if default is None:
         current = st.session_state.get(session_key)
@@ -224,17 +246,121 @@ def render_item_selector(
         else:
             default = options
 
+    # Prepare formatter
+    def format_option(option: str) -> str:
+        if renames_session_key:
+            return NamingManager.get_name(option, renames_session_key)
+        return option
+
     selected_items = st.pills(
         label,
         options=options,
         default=default,
         key=f"selector_{session_key}{key_suffix}",
         selection_mode="multi",
+        label_visibility="collapsed",
+        format_func=format_option,
     )
     
     # Update session state directly
-    st.session_state[session_key] = selected_items
+    if st.session_state.get(session_key) != selected_items:
+        st.session_state[session_key] = selected_items
+        SessionState.save_to_config()
+
     return selected_items
+
+
+def render_selection_pills(
+    options: list[str],
+    session_key: str,
+    *,
+    label: str,
+    format_func: Callable[[str], str] | None = None,
+    on_change: Callable | None = None,
+    label_visibility: str = "visible",
+) -> list[str]:
+    """Controlled multi-select pills with Select all / Deselect all.
+
+    Selection lives entirely in the widget's own key (``sel_<session_key>``) and
+    no ``default=`` is passed, which is the Streamlit-blessed "controlled widget"
+    pattern: it avoids the "default value but also set via Session State"
+    warning and lets the action buttons set the selection directly (reliably).
+
+    The key is seeded once (all options selected) and clamped to the current
+    options each render, so a stale config never crashes the widget. The result
+    is mirrored into ``session_key`` and persisted. Returns the selected items.
+
+    Args:
+        options: Available options.
+        session_key: Session-state key to mirror the selection into.
+        label: Pills label.
+        format_func: Optional display formatter for each option.
+        on_change: Optional callback fired on any selection change (manual or
+            via the action buttons).
+        label_visibility: Passed through to ``st.pills``.
+    """
+    if not options:
+        return []
+
+    widget_key = f"sel_{session_key}"
+
+    # Seed once (all selected), else clamp the existing selection to the current
+    # options. Both happen *before* the widget is instantiated, so no warning.
+    if widget_key not in st.session_state:
+        saved = st.session_state.get(session_key)
+        st.session_state[widget_key] = (
+            [x for x in saved if x in options] if saved else list(options)
+        )
+    else:
+        st.session_state[widget_key] = [
+            x for x in st.session_state[widget_key] if x in options
+        ]
+
+    def _select_all() -> None:
+        st.session_state[widget_key] = list(options)
+        if on_change:
+            on_change()
+
+    def _deselect_all() -> None:
+        st.session_state[widget_key] = []
+        if on_change:
+            on_change()
+
+    col_sel, col_desel, _ = st.columns([1, 1, 4], vertical_alignment="center")
+    col_sel.button(
+        "Select all",
+        icon=":material/select_all:",
+        key=f"select_all_{session_key}",
+        on_click=_select_all,
+        width="stretch",
+    )
+    col_desel.button(
+        "Deselect all",
+        icon=":material/deselect:",
+        key=f"deselect_all_{session_key}",
+        on_click=_deselect_all,
+        width="stretch",
+    )
+
+    selected = st.pills(
+        label,
+        options=options,
+        key=widget_key,
+        selection_mode="multi",
+        format_func=format_func or (lambda x: x),
+        label_visibility=label_visibility,
+        on_change=on_change,
+    )
+    selected = list(selected or [])
+
+    # Mirror into session_key when the *set* changes — an order-only difference
+    # (e.g. from a downstream "order items" step writing session_key) is left
+    # intact rather than clobbered by the pills' ordering.
+    if set(st.session_state.get(session_key) or []) != set(selected):
+        st.session_state[session_key] = selected
+        SessionState.save_to_config()
+
+    return selected
 
 
 def render_item_ordering(
@@ -242,6 +368,7 @@ def render_item_ordering(
     session_key: str,
     label: str = "Order Items",
     key_suffix: str = "",
+    renames_session_key: str | None = None,
 ) -> list[str]:
     """Render a generic item ordering UI.
 
@@ -250,6 +377,7 @@ def render_item_ordering(
         session_key: Session state key to store ordered items.
         label: Label for the section.
         key_suffix: Suffix for widget keys.
+        renames_session_key: Session state key for renames dict.
 
     Returns:
         Ordered list of items.
@@ -257,17 +385,39 @@ def render_item_ordering(
     if not items:
         return items
 
-    st.space()
-    st.markdown(label)
+    with st.expander(label, expanded=False, icon=":material/swap_vert:"):
     
-    # Generate a unique key based on content to force update when items change
-    # Include length and hash of sorted tuple to detect content changes efficiently
-    sort_key = f"order_{session_key}{key_suffix}_{len(items)}_{hash(tuple(sorted(items)))}"
+        # helper to get display name
+        def get_display_name(item: str) -> str:
+            if renames_session_key:
+                 return NamingManager.get_name(item, renames_session_key)
+            return item
+
+        # Map display names to original items to reverse lookup later
+        # If duplicates exist in display names, we might have an issue, but we'll assume uniqueness for UI purposes
+        # or just take the first match. Ideally display names should be unique.
+        display_map = {get_display_name(item): item for item in items}
+        display_items = [get_display_name(item) for item in items]
+        
+        # Generate a unique key based on content to force update when items change
+        # Include length and hash of sorted tuple to detect content changes efficiently
+        # Use display_items to ensure widget updates when names are edited
+        sort_key = f"order_{session_key}{key_suffix}_{len(items)}_{hash(tuple(sorted(display_items)))}"
+        
+        ordered_display_items = sort_items(display_items, key=sort_key)
     
-    ordered_items = sort_items(items, key=sort_key)
+    # Map back to original items
+    ordered_items = [display_map[d] for d in ordered_display_items if d in display_map]
+    
+    # Check if any items were lost (e.g. if display names changed dynamically), fallback to generic
+    if len(ordered_items) != len(items):
+        ordered_items = items
     
     # Update session state
-    st.session_state[session_key] = ordered_items
+    if st.session_state.get(session_key) != ordered_items:
+        st.session_state[session_key] = ordered_items
+        SessionState.save_to_config()
+        
     return ordered_items
 
 
@@ -285,9 +435,28 @@ def render_renaming_ui(
         label: Label for the expander.
         key_suffix: Suffix for widget keys.
     """
-    # Get current renames, merging defaults with user customizations
+    # Get current renames
     saved_renames: dict = st.session_state.get(session_key_renames, {})
-    current_renames = saved_renames.copy()
+    
+    # Callback to handle updates immediately before script rerun
+    def _update_rename(item_key: str, key_type: str, widget_key: str):
+        new_value = st.session_state[widget_key]
+        renames = st.session_state.get(session_key_renames, {})
+        
+        # Ensure entry exists as dict
+        if item_key not in renames:
+             renames[item_key] = {"display_name": item_key, "latex_name": item_key}
+        elif isinstance(renames[item_key], str):
+             renames[item_key] = {"display_name": renames[item_key], "latex_name": renames[item_key]}
+        
+        # Update specific field
+        if key_type == "display":
+            renames[item_key]["display_name"] = new_value
+        elif key_type == "latex":
+            renames[item_key]["latex_name"] = new_value
+            
+        st.session_state[session_key_renames] = renames
+        SessionState.save_to_config()
 
     with st.expander(label, expanded=False, icon=":material/edit:"):
         st.markdown("Customize names for display and LaTeX export:")
@@ -302,7 +471,7 @@ def render_renaming_ui(
 
         for item in items:
             # Get current values from mapping
-            entry = current_renames.get(item)
+            entry = saved_renames.get(item)
             if isinstance(entry, dict):
                 current_display = entry.get("display_name", item)
                 current_latex = entry.get("latex_name", item)
@@ -320,32 +489,28 @@ def render_renaming_ui(
             cols[0].code(item)
 
             # Column 2: Display name input
-            new_display = cols[1].text_input(
+            display_key = f"rename_display_{session_key_renames}_{item}{key_suffix}"
+            cols[1].text_input(
                 "Display",
                 value=current_display,
-                key=f"rename_display_{session_key_renames}_{item}{key_suffix}",
+                key=display_key,
                 label_visibility="collapsed",
-                icon=":material/edit:"
+                icon=":material/edit:",
+                on_change=_update_rename,
+                args=(item, "display", display_key)
             )
 
             # Column 3: LaTeX name input
+            latex_key = f"rename_latex_{session_key_renames}_{item}{key_suffix}"
             new_latex = cols[2].text_input(
                 "LaTeX",
                 value=current_latex,
-                key=f"rename_latex_{session_key_renames}_{item}{key_suffix}",
+                key=latex_key,
                 label_visibility="collapsed",
-                icon=":material/edit:"
+                icon=":material/edit:",
+                on_change=_update_rename,
+                args=(item, "latex", latex_key)
             )
 
             # Column 4: LaTeX preview
             cols[3].latex(new_latex)
-
-            # Update mapping if changed
-            if new_display != current_display or new_latex != current_latex:
-                current_renames[item] = {
-                    "display_name": new_display,
-                    "latex_name": new_latex
-                }
-
-        # Update session state
-        st.session_state[session_key_renames] = current_renames

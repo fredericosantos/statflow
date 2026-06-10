@@ -1,0 +1,109 @@
+project:
+    name: Statflow
+    number: 13
+    owner: fredericosantos
+repositories:
+    - fredericosantos/statflow
+defaults:
+    priority: p2 medium
+    status: backlog
+    labels:
+        - pm-tracked
+fields:
+    priority:
+        field: Priority
+        values:
+            p0 critical: P0 Critical
+            p1 high: P1 High
+            p2 medium: P2 Medium
+            p3 low: P3 Low
+    status:
+        field: Status
+        values:
+            backlog: Backlog
+            done: Done
+            in_progress: In Progress
+            review: Review
+            todo: Todo
+triage:
+    estimate:
+        query: is:issue is:open -has:estimate
+        apply: {}
+        interactive:
+            estimate: true
+    tracked:
+        query: is:issue is:open -label:pm-tracked
+        apply:
+            labels:
+                - pm-tracked
+            fields:
+                priority: p1 high
+                status: backlog
+        interactive:
+            status: true
+metadata:
+    project:
+        id: PVT_kwHOABEWL84BaGTu
+    fields:
+        - name: Title
+          id: PVTF_lAHOABEWL84BaGTuzhVARgo
+          data_type: TITLE
+        - name: Assignees
+          id: PVTF_lAHOABEWL84BaGTuzhVARgs
+          data_type: ASSIGNEES
+        - name: Status
+          id: PVTSSF_lAHOABEWL84BaGTuzhVARgw
+          data_type: SINGLE_SELECT
+          options:
+            - name: Backlog
+              id: f93280d6
+            - name: Todo
+              id: 8b914126
+            - name: In Progress
+              id: da8ed2b0
+            - name: Review
+              id: e4998725
+            - name: Done
+              id: 03bb88a9
+        - name: Labels
+          id: PVTF_lAHOABEWL84BaGTuzhVARg0
+          data_type: LABELS
+        - name: Linked pull requests
+          id: PVTF_lAHOABEWL84BaGTuzhVARg4
+          data_type: LINKED_PULL_REQUESTS
+        - name: Milestone
+          id: PVTF_lAHOABEWL84BaGTuzhVARg8
+          data_type: MILESTONE
+        - name: Repository
+          id: PVTF_lAHOABEWL84BaGTuzhVARhA
+          data_type: REPOSITORY
+        - name: Reviewers
+          id: PVTF_lAHOABEWL84BaGTuzhVARhE
+          data_type: REVIEWERS
+        - name: Parent issue
+          id: PVTF_lAHOABEWL84BaGTuzhVARhI
+          data_type: PARENT_ISSUE
+        - name: Sub-issues progress
+          id: PVTF_lAHOABEWL84BaGTuzhVARhM
+          data_type: SUB_ISSUES_PROGRESS
+        - name: Created
+          id: PVTF_lAHOABEWL84BaGTuzhVARhQ
+          data_type: CREATED
+        - name: Updated
+          id: PVTF_lAHOABEWL84BaGTuzhVARhU
+          data_type: UPDATED
+        - name: Closed
+          id: PVTF_lAHOABEWL84BaGTuzhVARhY
+          data_type: CLOSED
+        - name: Priority
+          id: PVTSSF_lAHOABEWL84BaGTuzhVARnU
+          data_type: SINGLE_SELECT
+          options:
+            - name: P0 Critical
+              id: 1615adc9
+            - name: P1 High
+              id: 331ff811
+            - name: P2 Medium
+              id: f7da372b
+            - name: P3 Low
+              id: 568b36f2

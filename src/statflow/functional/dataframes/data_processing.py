@@ -2,18 +2,18 @@
 Data processing utilities for experiment results.
 
 This module contains functions for transforming, labeling, and processing
-experiment data from the cached MLflow runs.
+experiment data from the cached (provider-agnostic) runs.
 
 data_processing.py
 ├── calculate_pareto_front()        # Calculate Pareto front for points
-├── get_dataset_info()              # Get dataset sample/feature counts
-└── fetch_experiment_data()         # Fetch filtered experiment data from cache
+├── fetch_experiment_data()         # Fetch filtered experiment data from cache
+└── apply_metric_filters()          # Apply saved metric range/NaN filters
 """
 
 import polars as pl
 import streamlit as st
 
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.runs_cache import RunsCache
 
 
 def calculate_pareto_front(df: pl.DataFrame, x_col: str, y_col: str) -> pl.DataFrame:
@@ -101,3 +101,38 @@ def fetch_experiment_data(
 
     return df
 
+
+def apply_metric_filters(df: pl.DataFrame) -> pl.DataFrame:
+    """Apply saved metric filters from session state to a DataFrame.
+
+    This function reads active filters, their range values, and NaN preferences
+    from st.session_state and applies them sequentially to the input DataFrame.
+    """
+    active_filters = st.session_state.get("active_metric_filters", [])
+    filter_values = st.session_state.get("metric_filter_values", {})
+    filter_nans = st.session_state.get("metric_filter_nans", {})
+
+    if not active_filters or df.is_empty():
+        return df
+
+    filtered_df = df
+    for metric in active_filters:
+        if metric not in filtered_df.columns:
+            continue
+
+        selected_range = filter_values.get(metric)
+        include_nans = filter_nans.get(metric, False)
+
+        if selected_range is not None:
+            # Range filter naturally excludes nulls/NaNs (float comparisons)
+            cond = (pl.col(metric) >= selected_range[0]) & (
+                pl.col(metric) <= selected_range[1]
+            )
+
+            # If user wants NaNs/nulls, we explicitly OR them back in
+            if include_nans:
+                cond = cond | pl.col(metric).is_null() | pl.col(metric).is_nan()
+
+            filtered_df = filtered_df.filter(cond)
+
+    return filtered_df

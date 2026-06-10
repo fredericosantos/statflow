@@ -20,7 +20,8 @@ from statflow.components.selection_ui import (
     render_item_ordering,
     render_renaming_ui,
 )
-from statflow.loggers.mlflow.runs_cache import RunsCache
+from statflow.loggers.runs_cache import RunsCache
+from statflow.config import SessionState
 from .constants import DatasetParamMode
 
 
@@ -56,6 +57,7 @@ def _render_dataset_selector(available_datasets: list[str]) -> list[str]:
         options=available_datasets,
         session_key="selected_datasets",
         label="Select Datasets",
+        renames_session_key="dataset_renames",
     )
 
 
@@ -65,6 +67,7 @@ def _render_dataset_ordering(selected_datasets: list[str]) -> list[str]:
         items=selected_datasets,
         session_key="selected_datasets",
         label="Order Selected Datasets",
+        renames_session_key="dataset_renames",
     )
 
 
@@ -80,20 +83,18 @@ def render_rename_datasets_ui(selected_datasets: list[str]) -> None:
 def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] | None:
     """Render the UI for multiple datasets mode."""
     available_params = RunsCache.get_available_params()
-    batch_size = st.session_state.get("max_results", 2000)
+    batch_size = st.session_state.get("max_results", 1000)
     run_count = RunsCache.get_run_count()
+    new_runs_found = 0
 
     # Handle search action
     if st.session_state.get("_trigger_search", False):
         st.session_state._trigger_search = False
         with st.spinner("Searching for more runs..."):
-            new_count = RunsCache.load_more_runs(selected_experiments, max_results=batch_size)
-        if new_count > 0:
-            st.success(f"Found {new_count} new runs.")
-        else:
-            st.info("No additional runs found.")
+            new_runs_found = RunsCache.load_more_runs(selected_experiments, max_results=batch_size)
+            run_count = RunsCache.get_run_count()  # Refresh count
 
-    col1, col2, col3 = st.columns([2, 1, 1], vertical_alignment="bottom")
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
 
     with col1:
         if available_params:
@@ -108,6 +109,7 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
                 options=available_params,
                 index=default_index,
                 key="dataset_param_selector",
+                help="Runs without a value in the selected parameter will be filtered out"
             )
             st.session_state.dataset_param = dataset_param
         else:
@@ -118,12 +120,20 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
         st.number_input(
             "Batch size",
             min_value=100,
-            max_value=10000,
-            value=batch_size,
+            max_value=50000,
             step=500,
             help="Number of runs to fetch per search.",
             key="max_results",
         )
+        
+        # Historical max runs logic
+        historical_max = st.session_state.get("historical_max_run_count", 0)
+        
+        # Update historical max if current runs are higher
+        if run_count > historical_max:
+            st.session_state["historical_max_run_count"] = run_count
+            historical_max = run_count
+            SessionState.save_to_config()
 
     with col3:
         button_label = (
@@ -131,13 +141,32 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
             if run_count > 0
             else f"Search {batch_size} runs"
         )
-        if st.button(button_label, key="search_datasets"):
+        if st.button(button_label, key="search_datasets", width="stretch"):
             st.session_state._trigger_search = True
             st.rerun()
 
-    # Show current run count
+    with col4:
+        # Show button to load max runs if applicable
+        if historical_max > batch_size:
+            def _load_max_runs():
+                st.session_state["max_results"] = historical_max
+                st.session_state._trigger_search = True
+            
+            st.button(
+                f"Load {historical_max} runs", 
+                help=f"Set batch size to your historical maximum of {historical_max} runs",
+                width="stretch",
+                on_click=_load_max_runs,
+            )
+
+    # Show run count status
     if run_count > 0:
-        st.caption(f"📊 {run_count} runs loaded")
+        if new_runs_found > 0:
+            st.caption(f":material/analytics: {run_count} runs loaded (+{new_runs_found} new)", text_alignment="center")
+        else:
+            st.caption(f":material/analytics: {run_count} runs loaded", text_alignment="center")
+    elif new_runs_found == 0 and st.session_state.get("_searched_once", False):
+        st.caption(":material/analytics: No additional runs found", text_alignment="center")
 
     # Get available datasets from cache
     available_datasets = _get_available_datasets(selected_experiments, dataset_param)
@@ -152,11 +181,8 @@ def _render_multiple_datasets_ui(selected_experiments: list[str]) -> list[str] |
     selected_datasets = _render_dataset_selector(available_datasets)
     ordered_datasets = _render_dataset_ordering(selected_datasets)
 
-    if dataset_param:
-        st.warning(
-            f"Runs without a value in `{dataset_param}` will be filtered out",
-            icon=":material/warning:",
-        )
+    # Warning moved to selectbox help
+
 
     return ordered_datasets
 
