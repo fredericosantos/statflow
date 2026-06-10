@@ -5,7 +5,7 @@ Entry point: `uv run streamlit run src/statflow/app.py`
 
 app.py
 ├── Page navigation (Setup: Get Started, Parameters, Metrics)
-└── Page navigation (Analysis: Results, Comparison)
+└── Page navigation (Analysis: Results, Comparison, Overall, Plots)
 
 Usage:
     uv run streamlit run src/statflow/app.py --server.address 0.0.0.0
@@ -19,12 +19,14 @@ parameters_page = st.Page("subpages/parameters.py", title="Parameters", icon=":m
 metrics_page = st.Page("subpages/metrics.py", title="Metrics", icon=":material/bar_chart:")
 results_page = st.Page("subpages/results.py", title="Results", icon=":material/insights:")
 comparison_page = st.Page("subpages/comparison.py", title="Comparison", icon=":material/trophy:")
+overall_page = st.Page("subpages/overall.py", title="Overall", icon=":material/leaderboard:")
+plots_page = st.Page("subpages/plots.py", title="Plots", icon=":material/show_chart:")
 
 # Create organized navigation with sections
 pg = st.navigation(
     {
         "Setup": [get_started_page, parameters_page, metrics_page],
-        "Analysis": [results_page, comparison_page],
+        "Analysis": [results_page, comparison_page, overall_page, plots_page],
     },
 )
 
