@@ -88,7 +88,8 @@ above currently exist.
 
 `st.session_state` is the single source of truth. `SessionState.initialize()` (idempotent, called at
 the top of each page's `main()`) seeds every key in `DEFAULT_STATE`, preferring values loaded from
-`.statflow_config.yaml` (in the **current working directory**, gitignored). Only keys in
+`~/.statflow/config.yaml`. On first run, the legacy `<cwd>/.statflow_config.yaml` (if present) is
+**copied** to the new path automatically — the original is left untouched. Only keys in
 `PERSISTABLE_KEYS` are written back via `save_to_config()` / `save_key_to_config()` — transient UI
 state stays out of that list. When adding a new persisted preference, add it to **both** `DEFAULT_STATE`
 and `PERSISTABLE_KEYS`.

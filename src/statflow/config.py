@@ -3,19 +3,27 @@ Configuration and state management for Streamlit MLflow visualization applicatio
 
 Provides centralized default state management and YAML persistence.
 
+Config is stored at ``~/.statflow/config.yaml``.  On first run, if the legacy
+CWD config (``<cwd>/.statflow_config.yaml``) exists and the new path does not,
+the legacy file is **copied** to the new path (one-time migration; the original
+is left untouched).  All reads and writes thereafter go to the new path.
+
 config.py
-├── Constants (MLFLOW_TRACKING_URI, CONFIG_FILE)
+├── Constants (MLFLOW_TRACKING_URI, CONFIG_FILE, _LEGACY_CONFIG_FILE)
 ├── PERSISTABLE_KEYS              # Keys that get saved to YAML
 ├── DEFAULT_STATE                 # Default session state schema
+├── _resolve_config_file()        # Resolve canonical path, run migration once
 ├── load_config()                 # Load config from YAML
 ├── save_config()                 # Save config to YAML
 └── SessionState                  # State manager class
     ├── initialize()              # Initialize with defaults + saved config
     ├── save_to_config()          # Save all persistable state to YAML
+    ├── save_key_to_config()      # Save a single key to YAML
     ├── get() / set() / has()     # State access methods
     └── Properties                # Convenience accessors
 """
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -26,8 +34,42 @@ import yaml
 # ==============================================================================
 
 MLFLOW_TRACKING_URI = "http://0.0.0.0:5000"
-CONFIG_DIR = Path.cwd()
-CONFIG_FILE = CONFIG_DIR / ".statflow_config.yaml"
+
+# Canonical config location: ~/.statflow/config.yaml
+_STATFLOW_DIR = Path.home() / ".statflow"
+CONFIG_FILE = _STATFLOW_DIR / "config.yaml"
+
+# Legacy location (CWD-relative) — kept only for one-time migration detection.
+_LEGACY_CONFIG_FILE = Path.cwd() / ".statflow_config.yaml"
+
+
+def _resolve_config_file() -> Path:
+    """Return the canonical config path, creating the directory and migrating if needed.
+
+    Migration rules (run once at import time):
+    - If ``~/.statflow/config.yaml`` already exists → use it, nothing to do.
+    - Else if ``./.statflow_config.yaml`` (legacy CWD path) exists → **copy** it
+      to ``~/.statflow/config.yaml`` (the original is left completely untouched).
+    - Else → just ensure ``~/.statflow/`` exists and return the new path.
+    """
+    _STATFLOW_DIR.mkdir(parents=True, exist_ok=True)
+
+    if CONFIG_FILE.exists():
+        return CONFIG_FILE
+
+    if _LEGACY_CONFIG_FILE.exists():
+        try:
+            shutil.copy2(_LEGACY_CONFIG_FILE, CONFIG_FILE)
+            print(f"Statflow: migrated config from {_LEGACY_CONFIG_FILE} → {CONFIG_FILE}")
+        except OSError as e:
+            print(f"Warning: Could not migrate config: {e}")
+
+    return CONFIG_FILE
+
+
+# Run migration once at import time so CONFIG_FILE is always the active path.
+_resolve_config_file()
+
 
 DEFAULT_GRAPH_CONFIG = {
     "width": 800,
@@ -146,7 +188,7 @@ DEFAULT_STATE: dict[str, Any] = {
 
 
 def load_config() -> dict[str, Any]:
-    """Load configuration from YAML file."""
+    """Load configuration from ``~/.statflow/config.yaml``."""
     if not CONFIG_FILE.exists():
         return {}
 
@@ -159,8 +201,9 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(config: dict[str, Any]) -> None:
-    """Save configuration to YAML file."""
+    """Save configuration to ``~/.statflow/config.yaml``."""
     try:
+        _STATFLOW_DIR.mkdir(parents=True, exist_ok=True)
         with CONFIG_FILE.open("w", encoding="utf-8") as f:
             yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
     except OSError as e:
