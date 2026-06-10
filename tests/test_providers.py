@@ -202,6 +202,7 @@ def test_wandb_provider_schema(monkeypatch):
 
     fake_state = _FakeSessionState(wandb_entity="test_entity", provider="wandb")
     monkeypatch.setattr(st, "session_state", fake_state)
+    monkeypatch.setenv("WANDB_API_KEY", "test-key")
     monkeypatch.setattr(requests, "post", _wandb_graphql_side_effect)
 
     from statflow.loggers.wandb.provider import WandbProvider
@@ -233,6 +234,7 @@ def test_wandb_provider_no_system_metrics(monkeypatch):
 
     fake_state = _FakeSessionState(wandb_entity="test_entity", provider="wandb")
     monkeypatch.setattr(st, "session_state", fake_state)
+    monkeypatch.setenv("WANDB_API_KEY", "test-key")
     monkeypatch.setattr(requests, "post", _wandb_graphql_side_effect)
 
     from statflow.loggers.wandb.provider import WandbProvider
@@ -252,6 +254,7 @@ def test_wandb_provider_cursors_updated(monkeypatch):
 
     fake_state = _FakeSessionState(wandb_entity="test_entity", provider="wandb")
     monkeypatch.setattr(st, "session_state", fake_state)
+    monkeypatch.setenv("WANDB_API_KEY", "test-key")
     monkeypatch.setattr(requests, "post", _wandb_graphql_side_effect)
 
     from statflow.loggers.wandb.provider import WandbProvider

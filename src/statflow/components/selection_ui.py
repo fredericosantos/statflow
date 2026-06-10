@@ -141,14 +141,17 @@ class SelectionManager:
             return []
 
         with st.expander(self.label, expanded=True, icon=":material/category:"):
-            selected = st.pills(
-                "Select items",
-                options=self.options,
-                default=self._default,
-                selection_mode="multi",
-                key=f"selector_{self.session_key}",
-                label_visibility="collapsed",
-                format_func=lambda x: self._get_display_name(x),
+            selected = cast(
+                "list[str] | None",
+                st.pills(
+                    "Select items",
+                    options=self.options,
+                    default=self._default,
+                    selection_mode="multi",
+                    key=f"selector_{self.session_key}",
+                    label_visibility="collapsed",
+                    format_func=lambda x: self._get_display_name(x),
+                ),
             )
 
             if selected is not None:
