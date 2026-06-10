@@ -233,8 +233,8 @@ def build_comparison_table(
 def iqm(values: Sequence[float] | np.ndarray) -> float:
     """Compute the interquartile mean (mean of values within [Q1, Q3], inclusive).
 
-    For degenerate inputs (n < 2), falls back to the plain mean of available
-    values (which equals the single value for n=1, and nan for n=0).
+    For degenerate inputs (n < 4, too few values to split into quartiles),
+    falls back to the plain mean of available values (nan for n=0).
     """
     arr = np.asarray(values, dtype=float)
     arr = arr[~np.isnan(arr)]
@@ -547,12 +547,16 @@ def cross_dataset_test(
 
             significant = holm_bonferroni_correction(raw_p, alpha=alpha)
 
-            # Compute adjusted p (the corrected threshold bound, standard Holm display)
+            # Holm step-down adjusted p-values: enforce monotonicity with a
+            # running max over the ascending-p order, so a smaller raw p can
+            # never display a smaller adjusted p than a larger raw p.
             n = len(raw_p)
             sorted_idx = sorted(range(n), key=lambda i: raw_p[i])
             p_adjusted = [0.0] * n
+            running_max = 0.0
             for rank, orig_i in enumerate(sorted_idx):
-                p_adjusted[orig_i] = min(raw_p[orig_i] * (n - rank), 1.0)
+                running_max = max(running_max, raw_p[orig_i] * (n - rank))
+                p_adjusted[orig_i] = min(running_max, 1.0)
 
             posthoc = pl.DataFrame(
                 {
@@ -616,18 +620,20 @@ def comparison_table_to_latex(
     *,
     caption: str,
     label: str,
+    maximize: bool,
 ) -> str:
     """Render a comparison DataFrame to a LaTeX booktabs table.
 
     Expected columns: ``Dataset``, plus one column per method (formatted strings
     from ``format_cell``).  The function detects the winning cell per row
-    (lowest numeric value for minimize; highest for maximize — uses the first
-    numeric token in each cell) and bolds it.
+    (lowest numeric value when ``maximize=False``; highest when ``maximize=True``
+    — uses the first numeric token in each cell) and bolds it.
 
     Args:
         df: Display DataFrame as produced by the Comparison page.
         caption: Table caption.
         label: LaTeX \\label{...} key.
+        maximize: True if higher metric values are better (direction of "winning").
 
     Returns:
         A LaTeX snippet string suitable for st.code(..., language="latex").
@@ -670,9 +676,8 @@ def comparison_table_to_latex(
 
         winner_col: str | None = None
         if valid_nums:
-            # We can't know direction here; bold the *maximum* by default.
-            # (Caller may pass pre-formatted string with 🥇; that's a display hint)
-            winner_col = max(valid_nums, key=lambda c: valid_nums[c])
+            pick = max if maximize else min
+            winner_col = pick(valid_nums, key=lambda c: valid_nums[c])
 
         cells: list[str] = [_escape_latex(str(row[cols[0]]))]
         for c in method_cols:
@@ -698,6 +703,7 @@ def cross_dataset_to_latex(
     *,
     caption: str,
     label: str,
+    maximize: bool,
 ) -> str:
     """Render a CrossDatasetResult + block matrix to a LaTeX booktabs table.
 
@@ -711,6 +717,7 @@ def cross_dataset_to_latex(
         block: The ``aggregate_per_dataset`` output used for the test.
         caption: Table caption.
         label: LaTeX \\label{...} key.
+        maximize: True if higher metric values are better (direction of "winning").
 
     Returns:
         LaTeX snippet string.
@@ -743,7 +750,8 @@ def cross_dataset_to_latex(
         vals = {g: row[g] for g in group_cols if row[g] is not None}
         winner_col: str | None = None
         if vals:
-            winner_col = max(vals, key=lambda g: vals[g])
+            pick = max if maximize else min
+            winner_col = pick(vals, key=lambda g: vals[g])
 
         cells = [_escape_latex(str(row[dataset_col]))]
         for g in group_cols:
