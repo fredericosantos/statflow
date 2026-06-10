@@ -378,7 +378,9 @@ def main() -> None:
                     f"({agg} aggregation)"
                 )
                 label = f"tab:overall-{metric}"
-                latex = cross_dataset_to_latex(result, block, caption=caption, label=label)
+                latex = cross_dataset_to_latex(
+                    result, block, caption=caption, label=label, maximize=maximize
+                )
                 st.code(latex, language="latex")
 
             st.divider()

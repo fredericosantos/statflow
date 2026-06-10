@@ -680,7 +680,7 @@ def _make_latex_df() -> pl.DataFrame:
 
 def test_comparison_table_to_latex_contains_booktabs():
     df = _make_latex_df()
-    latex = comparison_table_to_latex(df, caption="My Table", label="tab:my")
+    latex = comparison_table_to_latex(df, caption="My Table", label="tab:my", maximize=True)
     assert r"\toprule" in latex
     assert r"\midrule" in latex
     assert r"\bottomrule" in latex
@@ -688,19 +688,19 @@ def test_comparison_table_to_latex_contains_booktabs():
 
 def test_comparison_table_to_latex_escapes_underscore():
     df = _make_latex_df()
-    latex = comparison_table_to_latex(df, caption="My Table", label="tab:my")
+    latex = comparison_table_to_latex(df, caption="My Table", label="tab:my", maximize=True)
     # Method_B column name → escaped
     assert r"Method\_B" in latex
 
 
 def test_comparison_table_to_latex_booktabs_comment():
     df = _make_latex_df()
-    latex = comparison_table_to_latex(df, caption="My Table", label="tab:my")
+    latex = comparison_table_to_latex(df, caption="My Table", label="tab:my", maximize=True)
     assert r"% requires \usepackage{booktabs}" in latex
 
 
 def test_comparison_table_to_latex_empty_df():
-    latex = comparison_table_to_latex(pl.DataFrame(), caption="c", label="l")
+    latex = comparison_table_to_latex(pl.DataFrame(), caption="c", label="l", maximize=True)
     assert "Empty" in latex
 
 
@@ -710,7 +710,9 @@ def test_cross_dataset_to_latex_structure():
         theirs_vals=[0.8, 0.9, 0.85, 0.82, 0.88, 0.81],
     )
     result = cross_dataset_test(block, ours="ours", maximize=False)
-    latex = cross_dataset_to_latex(result, block, caption="Cross test", label="tab:cross")
+    latex = cross_dataset_to_latex(
+        result, block, caption="Cross test", label="tab:cross", maximize=False
+    )
     assert r"\toprule" in latex
     assert r"\bottomrule" in latex
     assert "wilcoxon" in latex.lower() or "Wilcoxon" in latex
@@ -723,7 +725,7 @@ def test_cross_dataset_to_latex_pvalue_small_notation():
         theirs_vals=[0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99],
     )
     result = cross_dataset_test(block, ours="ours", maximize=False)
-    latex = cross_dataset_to_latex(result, block, caption="C", label="L")
+    latex = cross_dataset_to_latex(result, block, caption="C", label="L", maximize=False)
     # Either the p value is very small and formatted as <0.001, or it's just small
     assert r"$<$0.001" in latex or "0.001" in latex or "p" in latex.lower()
 
@@ -736,7 +738,7 @@ def test_cross_dataset_to_latex_with_posthoc():
         b2_vals=[2.0] * 10,
     )
     result = cross_dataset_test(block, ours="ours", maximize=True)
-    latex = cross_dataset_to_latex(result, block, caption="Friedman", label="tab:f")
+    latex = cross_dataset_to_latex(result, block, caption="Friedman", label="tab:f", maximize=True)
     assert r"\toprule" in latex
     if result.posthoc is not None:
         assert "posthoc" in latex or "post" in latex.lower()
@@ -822,3 +824,80 @@ def test_aggregate_for_plot_empty_df():
         group_col="group",
     )
     assert result.is_empty()
+
+
+# ---------------------------------------------------------------------------
+# Regression: direction-aware winner bolding in LaTeX export
+# ---------------------------------------------------------------------------
+
+
+def test_comparison_table_to_latex_bolds_max_when_maximize():
+    df = _make_latex_df()
+    latex = comparison_table_to_latex(df, caption="C", label="L", maximize=True)
+    # Row 1: Method A=0.91 vs Method_B=0.50 → Method A bolded
+    assert r"\textbf{0.9100" in latex
+    assert r"\textbf{0.5000" not in latex
+
+
+def test_comparison_table_to_latex_bolds_min_when_minimize():
+    df = _make_latex_df()
+    latex = comparison_table_to_latex(df, caption="C", label="L", maximize=False)
+    # Row 1: Method_B=0.50 is the (lower-is-better) winner
+    assert r"\textbf{0.5000" in latex
+    assert r"\textbf{0.9100" not in latex
+
+
+def test_cross_dataset_to_latex_bolds_min_when_minimize():
+    block = _make_complete_block(
+        ours_vals=[0.1, 0.2, 0.15, 0.12, 0.18, 0.11],
+        theirs_vals=[0.8, 0.9, 0.85, 0.82, 0.88, 0.81],
+    )
+    result = cross_dataset_test(block, ours="ours", maximize=False)
+    latex = cross_dataset_to_latex(result, block, caption="C", label="L", maximize=False)
+    # The "ours" values (lower) must be the bolded ones, e.g. 0.1 in row ds1
+    assert r"\textbf{0.100}" in latex
+    assert r"\textbf{0.800}" not in latex
+
+
+def test_cross_dataset_to_latex_bolds_max_when_maximize():
+    block = _make_complete_block(
+        ours_vals=[0.1, 0.2, 0.15, 0.12, 0.18, 0.11],
+        theirs_vals=[0.8, 0.9, 0.85, 0.82, 0.88, 0.81],
+    )
+    result = cross_dataset_test(block, ours="ours", maximize=True)
+    latex = cross_dataset_to_latex(result, block, caption="C", label="L", maximize=True)
+    assert r"\textbf{0.800}" in latex
+    assert r"\textbf{0.100}" not in latex
+
+
+# ---------------------------------------------------------------------------
+# Regression: Holm adjusted p-values must be monotone (step-down running max)
+# ---------------------------------------------------------------------------
+
+
+def test_posthoc_adjusted_p_monotone_and_bounded():
+    """For rows sorted by raw p ascending, p_adjusted is non-decreasing and >= p_value."""
+    rng = np.random.default_rng(7)
+    n_ds = 12
+    ours = rng.normal(0.10, 0.01, n_ds)
+    b1 = ours + rng.normal(0.50, 0.05, n_ds)  # clearly worse
+    b2 = ours + rng.normal(0.04, 0.03, n_ds)  # marginally worse
+    b3 = ours + rng.normal(0.00, 0.03, n_ds)  # indistinguishable
+    block = pl.DataFrame(
+        {
+            "dataset": [f"ds{i}" for i in range(n_ds)],
+            "ours": ours,
+            "b1": b1,
+            "b2": b2,
+            "b3": b3,
+        }
+    )
+    result = cross_dataset_test(block, ours="ours", maximize=False)
+    assert result.method == "friedman"
+    assert result.posthoc is not None
+    ph = result.posthoc.sort("p_value")
+    p_adj = ph.get_column("p_adjusted").to_list()
+    p_raw = ph.get_column("p_value").to_list()
+    assert all(a >= r for a, r in zip(p_adj, p_raw))
+    assert all(p_adj[i] <= p_adj[i + 1] for i in range(len(p_adj) - 1))
+    assert all(0.0 <= a <= 1.0 for a in p_adj)

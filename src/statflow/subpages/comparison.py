@@ -165,12 +165,14 @@ def _render_direction_control(metric: str | None) -> bool:
     return choice == "Higher"
 
 
-def _render_latex_export(display_df: pl.DataFrame, metric: str) -> None:
+def _render_latex_export(display_df: pl.DataFrame, metric: str, maximize: bool) -> None:
     """Render a LaTeX export expander with a copyable code block."""
     with st.expander("LaTeX export", icon=":material/code:"):
         caption = f"Comparison table — {NamingManager.get_metric_name(metric)}"
         label = f"tab:comparison-{metric}"
-        latex = comparison_table_to_latex(display_df, caption=caption, label=label)
+        latex = comparison_table_to_latex(
+            display_df, caption=caption, label=label, maximize=maximize
+        )
         st.code(latex, language="latex")
 
 
@@ -541,7 +543,7 @@ def main():
         # LaTeX export expander (spec §2.1)
         # Build a clean version of the table without the "Total" row for export
         export_df = display_df.filter(pl.col("Dataset") != "Total")
-        _render_latex_export(export_df, comparison_metric)
+        _render_latex_export(export_df, comparison_metric, maximize)
 
         # 7. Visual Comparison
         st.divider()
