@@ -8,9 +8,10 @@ beside it so the relative `st.Page(...)` paths resolve from an installed copy.
 
 from __future__ import annotations
 
+import os
 import sys
 
-from statflow.cli import APP, main
+from statflow.cli import APP, DEFAULTS, main
 
 
 def test_app_path_is_packaged_next_to_subpages():
@@ -43,8 +44,37 @@ def test_main_forwards_extra_args(monkeypatch):
     monkeypatch.setattr(
         "streamlit.web.cli.main", lambda *a, **kw: called.append(list(sys.argv)), raising=True
     )
-    monkeypatch.setattr(sys, "argv", ["statflow", "--server.port", "8513"])
+    monkeypatch.setattr(sys, "argv", ["statflow", "--server.port", "9999"])
 
     main()
 
-    assert called[0][-2:] == ["--server.port", "8513"]
+    assert called[0][-2:] == ["--server.port", "9999"]
+
+
+def test_bare_command_defaults_to_own_port_and_loopback(monkeypatch):
+    """Bare `statflow` must not inherit Streamlit's 8501/all-interfaces defaults."""
+    monkeypatch.setattr("streamlit.web.cli.main", lambda *a, **kw: None, raising=True)
+    monkeypatch.setattr(sys, "argv", ["statflow"])
+    for key in DEFAULTS:
+        monkeypatch.delenv(key, raising=False)
+
+    main()
+
+    assert os.environ["STREAMLIT_SERVER_PORT"] == "8513"
+    # No auth in the app: loopback only, never a public/LAN interface by default.
+    assert os.environ["STREAMLIT_SERVER_ADDRESS"] == "127.0.0.1"
+    assert os.environ["STREAMLIT_SERVER_HEADLESS"] == "true"
+    assert os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] == "false"
+
+
+def test_preset_env_is_not_overridden(monkeypatch):
+    """A user-set env var wins over our default (setdefault, not assignment)."""
+    monkeypatch.setattr("streamlit.web.cli.main", lambda *a, **kw: None, raising=True)
+    monkeypatch.setattr(sys, "argv", ["statflow"])
+    monkeypatch.setenv("STREAMLIT_SERVER_PORT", "1234")
+    monkeypatch.setenv("STREAMLIT_SERVER_ADDRESS", "0.0.0.0")
+
+    main()
+
+    assert os.environ["STREAMLIT_SERVER_PORT"] == "1234"
+    assert os.environ["STREAMLIT_SERVER_ADDRESS"] == "0.0.0.0"
