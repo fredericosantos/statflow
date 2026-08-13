@@ -43,8 +43,8 @@ def test_main_forwards_extra_args(monkeypatch):
     monkeypatch.setattr(
         "streamlit.web.cli.main", lambda *a, **kw: called.append(list(sys.argv)), raising=True
     )
-    monkeypatch.setattr(sys, "argv", ["statflow", "--server.port", "8502"])
+    monkeypatch.setattr(sys, "argv", ["statflow", "--server.port", "8513"])
 
     main()
 
-    assert called[0][-2:] == ["--server.port", "8502"]
+    assert called[0][-2:] == ["--server.port", "8513"]

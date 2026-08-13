@@ -35,7 +35,7 @@ that — any params/metrics work, and whether a metric is better lower or higher
 ```bash
 uv tool install git+https://github.com/fredericosantos/statflow   # or: uv tool install .
 statflow                                                          # run the app
-statflow --server.port 8502 --server.headless true                # args go to Streamlit
+statflow --server.port 8513 --server.headless true                # args go to Streamlit
 uv tool upgrade statflow                                          # update later
 ```
 

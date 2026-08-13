@@ -10,7 +10,7 @@ relative to the main script — working from an installed copy.
 
 Extra arguments are forwarded to Streamlit, e.g.::
 
-    statflow --server.port 8502 --server.address 127.0.0.1 --server.headless true
+    statflow --server.port 8513 --server.address 127.0.0.1 --server.headless true
 
 cli.py
 └── main()   # `statflow` console script -> streamlit run <package>/app.py

@@ -20,7 +20,7 @@ uv run ruff check . / uv run ruff format .           # lint / format
 uv run ty check                                      # type check (Astral ty)
 
 uv tool install .                                    # install the `statflow` command
-statflow --server.port 8502                          # run from any directory
+statflow --server.port 8513                          # run from any directory
 ```
 
 `pyproject.toml` configures pytest, ruff (line-length 100, py313) and ty. All four checks run in
