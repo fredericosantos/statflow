@@ -99,6 +99,7 @@ PERSISTABLE_KEYS = [
     "selected_groups",
     "group_selections_cache",  # Caches group selections per parameter combo
     "group_renames",
+    "selected_tags",
     # Metrics page
     "selected_metrics",
     "active_metric_filters",
@@ -164,6 +165,7 @@ DEFAULT_STATE: dict[str, Any] = {
     "selected_groups": [],
     "group_selections_cache": {},  # {param_combo_key: [selected_groups]}
     "group_renames": {},
+    "selected_tags": [],  # W&B tags chosen to act as grouping parameters
     # Metrics page
     "selected_metrics": [],
     "available_metrics": [],

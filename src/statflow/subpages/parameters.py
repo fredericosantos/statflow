@@ -6,14 +6,21 @@ This page allows users to explore, filter, and configure experiment parameters.
 parameters.py
 ├── main()                          # Main page entry point
 ├── handle_parameter_selection()    # Parameter selection UI
+├── render_tag_selection()          # W&B tag picker (tags as grouping params)
 └── render_parameter_filters()      # Dynamic parameter filter UI
 """
+
+from typing import cast
 
 import polars as pl
 import streamlit as st
 
 from statflow.config import SessionState
-from statflow.functional.dataframes.data_processing import fetch_experiment_data
+from statflow.functional.dataframes.data_processing import (
+    available_tags,
+    fetch_experiment_data,
+    grouping_params,
+)
 from statflow.shared.server_status import ServerStatusManager
 
 st.set_page_config(
@@ -95,6 +102,41 @@ def reset_active_group_filters():
     st.session_state.active_group_filters = []
 
 
+def render_tag_selection() -> None:
+    """Tag selector: pick W&B tags to use as grouping parameters.
+
+    Each selected tag becomes a `tag:<name>` true/false parameter (see
+    `data_processing.add_tag_columns`), so tags participate in grouping exactly
+    like any other parameter. No-op when the data has no tags (e.g. MLflow).
+    """
+    tags = available_tags()
+    if not tags:
+        return
+
+    st.divider()
+    st.markdown("**Tags**")
+    st.caption("Select tags to use as grouping parameters (each becomes a true/false split).")
+
+    # Clamp stale selections to the tags actually present in the loaded data.
+    current = [t for t in st.session_state.get("selected_tags", []) if t in tags]
+    selected = cast(
+        "list[str]",
+        st.pills(
+            "Tags",
+            options=tags,
+            default=current,
+            selection_mode="multi",
+            key="tag_selection_pills",
+            label_visibility="collapsed",
+        ),
+    )
+    selected = list(selected) if selected else []
+    if selected != st.session_state.get("selected_tags", []):
+        st.session_state["selected_tags"] = selected
+        SessionState.save_key_to_config("selected_tags")
+        reset_active_group_filters()
+
+
 def handle_parameter_selection(
     selected_experiments: list[str], dataset_param: str
 ) -> list[str] | None:
@@ -155,23 +197,23 @@ def main():
         return
 
     with st.expander("Parameter Configuration", expanded=True, icon=":material/settings:"):
-        selected_params = handle_parameter_selection(
+        handle_parameter_selection(
             st.session_state["selected_experiments"], st.session_state["dataset_param"]
         )
+        render_tag_selection()
 
-    if not selected_params:
+    # A group is defined by selected parameters and/or selected tags.
+    comparison_params = grouping_params()
+    if not comparison_params:
+        st.info("Select at least one parameter or tag to define groups.")
         return
 
-    # Fetch parameter data
+    # Fetch parameter data (adds `tag:<name>` columns for the selected tags).
     with st.spinner("Loading parameter data..."):
         param_df = fetch_experiment_data("params.")
 
     if param_df.is_empty():
         st.error("No parameter data found for the selected experiments and datasets.")
-        return
-
-    comparison_params = st.session_state["selected_params"]
-    if not comparison_params:
         return
 
     with st.expander("Filters", expanded=False, icon=":material/filter_list:"):
@@ -183,15 +225,19 @@ def main():
         st.warning("No data matches the current filter criteria. Please adjust your filters.")
         return
 
-    # Create group labels
+    # Create group labels from the params/tags that are actually present.
+    present_params = [p for p in comparison_params if p in param_df.columns]
     exprs = []
-    for i, p in enumerate(comparison_params):
+    for i, p in enumerate(present_params):
         if i > 0:
             exprs.append(pl.lit(", "))
         exprs.append(pl.lit(f"{p}="))
         exprs.append(pl.col(p).cast(pl.Utf8))
 
-    param_df = param_df.with_columns(pl.concat_str(exprs).alias("group_label"))
+    if exprs:
+        param_df = param_df.with_columns(pl.concat_str(exprs).alias("group_label"))
+    else:
+        param_df = param_df.with_columns(pl.lit("Default").alias("group_label"))
 
     available_groups = sorted(param_df.get_column("group_label").drop_nulls().unique().to_list())
 

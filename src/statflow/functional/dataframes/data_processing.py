@@ -7,6 +7,10 @@ experiment data from the cached (provider-agnostic) runs.
 data_processing.py
 ├── calculate_pareto_front()        # Calculate Pareto front for points
 ├── fetch_experiment_data()         # Fetch filtered experiment data from cache
+├── tags_from_values()              # Split comma-joined `tags` values into unique tags
+├── available_tags()                # Distinct W&B tags across cached runs
+├── add_tag_columns()               # Derive `tag:<name>` true/false columns
+├── grouping_params()               # selected_params + selected tags (as `tag:<name>`)
 └── apply_metric_filters()          # Apply saved metric range/NaN filters
 """
 
@@ -14,6 +18,8 @@ import polars as pl
 import streamlit as st
 
 from statflow.loggers.runs_cache import RunsCache
+
+TAG_PARAM_PREFIX = "tag:"  # `tag:<name>` columns derived from selected W&B tags
 
 
 def calculate_pareto_front(df: pl.DataFrame, x_col: str, y_col: str) -> pl.DataFrame:
@@ -93,7 +99,58 @@ def fetch_experiment_data(column_prefix: str, clean_prefix: bool = True) -> pl.D
         if new_names:
             df = df.rename(new_names)
 
+    # Surface selected W&B tags as `tag:<name>` boolean params (no-op for metrics
+    # data or when no tags are selected).
+    df = add_tag_columns(df, st.session_state.get("selected_tags", []))
+
     return df
+
+
+def tags_from_values(values: list) -> list[str]:
+    """Split comma-joined `params.tags` values into a sorted list of unique tags."""
+    tags: set[str] = set()
+    for v in values:
+        if v is None:
+            continue
+        tags.update(t for t in str(v).split(",") if t)
+    return sorted(tags)
+
+
+def available_tags() -> list[str]:
+    """Distinct individual W&B tags across all cached runs."""
+    return tags_from_values(RunsCache.get_param_values("tags"))
+
+
+def add_tag_columns(df: pl.DataFrame, tags: list[str]) -> pl.DataFrame:
+    """Add a `tag:<name>` "true"/"false" column per tag, by membership in `tags`.
+
+    The `tags` column holds the comma-joined tag set per run (or null). Each selected
+    tag becomes a binary categorical param so it slots into the existing
+    `param=value` group-label machinery.
+    """
+    if not tags or "tags" not in df.columns:
+        return df
+
+    split = pl.col("tags").str.split(",")
+    exprs = [
+        pl.when(split.list.contains(t).fill_null(False))
+        .then(pl.lit("true"))
+        .otherwise(pl.lit("false"))
+        .alias(f"{TAG_PARAM_PREFIX}{t}")
+        for t in tags
+    ]
+    return df.with_columns(exprs)
+
+
+def grouping_params() -> list[str]:
+    """Params that define a group: explicit `selected_params` plus selected tags.
+
+    Selected tags are appended as `tag:<name>` columns (created by `add_tag_columns`)
+    so they behave exactly like any other selected parameter in grouping/comparison.
+    """
+    base = list(st.session_state["selected_params"])
+    tags = st.session_state.get("selected_tags", [])
+    return base + [f"{TAG_PARAM_PREFIX}{t}" for t in tags]
 
 
 def apply_metric_filters(df: pl.DataFrame) -> pl.DataFrame:

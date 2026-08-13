@@ -10,11 +10,14 @@ canonical schema as:
   - run.name           -> run_id
   - run.createdAt      -> start_time
   - run.config[k].value-> params.<k>   (config entries are {"value", "desc"})
-  - numeric summary[k] -> metrics.<k>  (skips "_"-prefixed system keys)
+  - numeric summary[k] -> metrics.<k>  ("_"-prefixed system keys dropped, except
+                                        the W&B defaults in _WANDB_DEFAULT_METRICS,
+                                        which are renamed: _runtime -> runtime, etc.)
 
-A few useful W&B run attributes (display name, group, state) are also surfaced
-as params so they can be used as grouping handles; real config keys win on any
-name clash.
+A number of useful W&B run attributes (display name, group, state, commit, host,
+job type, sweep, user, and tags) are also surfaced as params so they can be used
+as grouping handles; real config keys win on any name clash. `tags` is a list, so
+it is stored comma-joined and split back into individual tags on the UI side.
 
 provider.py
 ├── _api_key() / _graphql_url()   # netrc/env-based auth + endpoint
@@ -44,6 +47,11 @@ _WANDB_HOST = "api.wandb.ai"
 _DEFAULT_URL = f"https://{_WANDB_HOST}/graphql"
 _PAGE_CAP = 500  # W&B caps `first` per page; loop pages to reach max_results.
 
+# W&B writes these numeric system keys into every run's summary. Surface them as
+# regular metrics under clean names instead of dropping them with the rest of the
+# "_"-prefixed system keys.
+_WANDB_DEFAULT_METRICS = {"_runtime": "runtime", "_timestamp": "timestamp", "_step": "step"}
+
 _VIEWER_Q = "query { viewer { username entity } }"
 
 _PROJECTS_Q = """
@@ -60,7 +68,10 @@ query Runs($entity: String!, $project: String!, $first: Int!, $after: String) {
     runs(first: $first, after: $after, order: "-createdAt") {
       edges {
         cursor
-        node { name displayName createdAt state group config summaryMetrics }
+        node {
+          name displayName createdAt state group config summaryMetrics
+          commit host jobType sweepName tags user { username }
+        }
       }
       pageInfo { hasNextPage endCursor }
     }
@@ -222,6 +233,8 @@ class WandbProvider(RunProvider):
     @staticmethod
     def _map_run(node: dict[str, Any]) -> dict[str, Any]:
         """Map a W&B run node onto a canonical-schema row."""
+        user = node.get("user") or {}
+        tags = node.get("tags") or []
         row: dict[str, Any] = {
             "run_id": node["name"],
             "start_time": _parse_dt(node.get("createdAt")),
@@ -229,6 +242,15 @@ class WandbProvider(RunProvider):
             "params.run_name": node.get("displayName"),
             "params.group": node.get("group"),
             "params.state": node.get("state"),
+            "params.commit": node.get("commit"),
+            "params.host": node.get("host"),
+            "params.job_type": node.get("jobType"),
+            "params.sweep": node.get("sweepName"),
+            "params.user": user.get("username"),
+            # Tags are a list; store as a sorted comma-joined string (the canonical
+            # schema is scalar params). The Parameters page splits this back into
+            # individual selectable tags. ponytail: assumes tags contain no commas.
+            "params.tags": ",".join(sorted(tags)) if tags else None,
         }
 
         config = json.loads(node["config"]) if node.get("config") else {}
@@ -239,9 +261,14 @@ class WandbProvider(RunProvider):
 
         summary = json.loads(node["summaryMetrics"]) if node.get("summaryMetrics") else {}
         for key, value in summary.items():
-            if key.startswith("_"):
+            if not _is_number(value):
                 continue
-            if _is_number(value):
-                row[f"metrics.{key}"] = float(value)
+            if key.startswith("_"):
+                name = _WANDB_DEFAULT_METRICS.get(key)
+                if name is None:
+                    continue  # unwhitelisted system key
+            else:
+                name = key
+            row[f"metrics.{name}"] = float(value)
 
         return row

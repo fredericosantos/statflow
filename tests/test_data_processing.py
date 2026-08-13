@@ -257,3 +257,81 @@ def test_fetch_experiment_data_empty_when_no_datasets(monkeypatch):
 
     result = fetch_experiment_data("metrics.")
     assert result.is_empty()
+
+
+# ---------------------------------------------------------------------------
+# Tags: tags_from_values / add_tag_columns / grouping_params
+# ---------------------------------------------------------------------------
+
+
+def test_tags_from_values_splits_and_dedupes():
+    from statflow.functional.dataframes.data_processing import tags_from_values
+
+    values = ["baseline,gpu", "baseline", None, "", "cpu,gpu"]
+    assert tags_from_values(values) == ["baseline", "cpu", "gpu"]
+
+
+def test_add_tag_columns_membership_and_nulls():
+    from statflow.functional.dataframes.data_processing import add_tag_columns
+
+    df = pl.DataFrame({"run_id": ["a", "b", "c"], "tags": ["baseline,gpu", "gpu", None]})
+    out = add_tag_columns(df, ["baseline", "gpu"])
+
+    assert out["tag:baseline"].to_list() == ["true", "false", "false"]
+    assert out["tag:gpu"].to_list() == ["true", "true", "false"]
+
+
+def test_add_tag_columns_noop_without_tags_column():
+    from statflow.functional.dataframes.data_processing import add_tag_columns
+
+    df = pl.DataFrame({"run_id": ["a"], "lr": ["0.01"]})
+    assert add_tag_columns(df, ["baseline"]).columns == df.columns
+    # And a no-op when no tags are selected, even if a tags column exists.
+    df2 = pl.DataFrame({"tags": ["baseline"]})
+    assert add_tag_columns(df2, []).columns == df2.columns
+
+
+def test_grouping_params_appends_selected_tags(monkeypatch):
+    import streamlit as st
+
+    fake_state = _FakeSessionState(
+        selected_params=["method", "lr"],
+        selected_tags=["baseline", "gpu"],
+    )
+    monkeypatch.setattr(st, "session_state", fake_state)
+
+    from statflow.functional.dataframes.data_processing import grouping_params
+
+    assert grouping_params() == ["method", "lr", "tag:baseline", "tag:gpu"]
+
+
+def test_fetch_experiment_data_derives_selected_tag_columns(monkeypatch):
+    import streamlit as st
+
+    from statflow.loggers import runs_cache as rc_module
+
+    fake_state = _FakeSessionState(
+        selected_datasets=["ds_a"],
+        dataset_param="dataset",
+        selected_tags=["baseline"],
+    )
+    monkeypatch.setattr(st, "session_state", fake_state)
+
+    runs_df = pl.DataFrame(
+        {
+            "run_id": ["r1", "r2"],
+            "params.dataset": ["ds_a", "ds_a"],
+            "params.tags": ["baseline,gpu", "gpu"],
+        }
+    )
+    monkeypatch.setattr(
+        rc_module.RunsCache,
+        "filter_by_datasets",
+        classmethod(lambda cls, param, datasets: runs_df),
+    )
+
+    from statflow.functional.dataframes.data_processing import fetch_experiment_data
+
+    result = fetch_experiment_data("params.")
+    assert "tag:baseline" in result.columns
+    assert result["tag:baseline"].to_list() == ["true", "false"]
