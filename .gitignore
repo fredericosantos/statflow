@@ -9,5 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
+# OS junk
+.DS_Store
+
 # Project configuration
 .statflow_config.yaml

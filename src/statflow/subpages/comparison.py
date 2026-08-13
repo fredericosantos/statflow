@@ -25,6 +25,7 @@ from statflow.config import SessionState
 from statflow.functional.dataframes.data_processing import (
     apply_metric_filters,
     fetch_experiment_data,
+    grouping_params,
 )
 from statflow.functional.statistics import (
     a12,
@@ -334,12 +335,10 @@ def main():
         st.warning("No data remains after applying metric filters.")
         return
 
-    # Build group labels
-    selected_params = st.session_state["selected_params"]
+    # Build group labels from selected params + selected tags (those present).
+    present_params = [p for p in grouping_params() if p in param_df.columns]
     exprs = []
-    for i, p in enumerate(selected_params):
-        if p not in param_df.columns:
-            continue
+    for i, p in enumerate(present_params):
         if i > 0:
             exprs.append(pl.lit(", "))
         exprs.append(pl.lit(f"{p}="))

@@ -166,6 +166,12 @@ def _make_wandb_runs_data() -> dict:
                             "createdAt": "2024-03-01T10:00:00Z",
                             "state": "finished",
                             "group": "grp1",
+                            "commit": "abc123",
+                            "host": "gpu-node-1",
+                            "jobType": "train",
+                            "sweepName": "sweep-42",
+                            "tags": ["gpu", "baseline"],
+                            "user": {"username": "alice"},
                             "config": '{"lr": {"value": 0.01, "desc": null}, "epochs": {"value": 10, "desc": null}}',
                             "summaryMetrics": '{"rmse": 0.05, "r2": 0.95, "_runtime": 120}',
                         },
@@ -227,8 +233,8 @@ def test_wandb_provider_schema(monkeypatch):
         )
 
 
-def test_wandb_provider_no_system_metrics(monkeypatch):
-    """W&B provider strips _-prefixed system metrics from summaryMetrics."""
+def test_wandb_provider_renames_default_metrics(monkeypatch):
+    """W&B default system keys (_runtime, ...) are surfaced under clean names."""
     import requests
     import streamlit as st
 
@@ -243,8 +249,35 @@ def test_wandb_provider_no_system_metrics(monkeypatch):
     df, _ = provider.fetch_runs(["test_project"], max_results=10)
 
     metric_cols = [c for c in df.columns if c.startswith(METRIC_PREFIX)]
-    # _runtime should not appear
-    assert "metrics._runtime" not in metric_cols, "_runtime should be excluded"
+    # Raw "_"-prefixed key must never leak through...
+    assert "metrics._runtime" not in metric_cols, "_runtime should not appear raw"
+    # ...but it is surfaced under the renamed default.
+    assert "metrics.runtime" in metric_cols, "_runtime should be renamed to runtime"
+
+
+def test_wandb_provider_surfaces_attribute_params(monkeypatch):
+    """W&B run attributes (commit/host/user/sweep/job_type/tags) become params."""
+    import requests
+    import streamlit as st
+
+    fake_state = _FakeSessionState(wandb_entity="test_entity", provider="wandb")
+    monkeypatch.setattr(st, "session_state", fake_state)
+    monkeypatch.setenv("WANDB_API_KEY", "test-key")
+    monkeypatch.setattr(requests, "post", _wandb_graphql_side_effect)
+
+    from statflow.loggers.wandb.provider import WandbProvider
+
+    provider = WandbProvider()
+    df, _ = provider.fetch_runs(["test_project"], max_results=10)
+    row = df.row(0, named=True)
+
+    assert row["params.commit"] == "abc123"
+    assert row["params.host"] == "gpu-node-1"
+    assert row["params.job_type"] == "train"
+    assert row["params.sweep"] == "sweep-42"
+    assert row["params.user"] == "alice"
+    # Tags list is stored sorted + comma-joined.
+    assert row["params.tags"] == "baseline,gpu"
 
 
 def test_wandb_provider_cursors_updated(monkeypatch):
