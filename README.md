@@ -30,14 +30,26 @@ that — any params/metrics work, and whether a metric is better lower or higher
 
 ## Quick start
 
+**Install it as a command** (runs from any directory):
+
+```bash
+uv tool install git+https://github.com/fredericosantos/statflow   # or: uv tool install .
+statflow                                                          # run the app
+statflow --server.port 8513 --server.headless true                # args go to Streamlit
+uv tool upgrade statflow                                          # update later
+```
+
+**Or run it from a clone** (for development):
+
 ```bash
 uv sync                                                              # install deps
 uv run streamlit run src/statflow/app.py                            # run the app
 uv run streamlit run src/statflow/app.py --server.address 0.0.0.0   # bind all interfaces
 ```
 
-The entry point is **`app.py`** — the `st.Page(...)` paths in `st.navigation(...)` are relative to
-it, so the app must be launched via `app.py`.
+The app entry point is **`app.py`** — the `st.Page(...)` paths in `st.navigation(...)` are relative
+to it, so it must be launched via `app.py`. The `statflow` command (`cli.py`) does this for you,
+resolving the packaged `app.py` regardless of your current directory.
 
 ## Data sources (providers)
 
@@ -86,6 +98,7 @@ better than **all** baselines at α = 0.05. "Better" follows the per-metric **di
 | Path | Role |
 |---|---|
 | `app.py` | Navigation + page registration. Entry point. |
+| `cli.py` | `statflow` console script — runs the packaged `app.py` via Streamlit. |
 | `config.py` | `SessionState`, `DEFAULT_STATE`, `PERSISTABLE_KEYS`, YAML persistence. |
 | `loggers/base.py` | `RunProvider` interface + canonical DataFrame schema contract. |
 | `loggers/registry.py` | Provider registration and lazy lookup by name. |
@@ -110,9 +123,10 @@ back.
 ## Development
 
 ```bash
+uv run pytest            # tests
 uv run ruff check .      # lint
 uv run ruff format .     # format
 uv run ty check          # type check
 ```
 
-There are no automated tests yet.
+All four run in CI on every push and pull request (`.github/workflows/ci.yml`).

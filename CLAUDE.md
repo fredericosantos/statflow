@@ -15,12 +15,16 @@ but nothing is hardcoded to that — metric direction (lower/higher-is-better) i
 uv sync                                              # install deps
 uv run streamlit run src/statflow/app.py             # run the app (entry point is app.py)
 uv run streamlit run src/statflow/app.py --server.address 0.0.0.0   # bind all interfaces
+uv run pytest                                        # tests
 uv run ruff check . / uv run ruff format .           # lint / format
 uv run ty check                                      # type check (Astral ty)
+
+uv tool install .                                    # install the `statflow` command
+statflow --server.port 8513                          # run from any directory
 ```
 
-There are **no tests** and **no ruff/ty config** in `pyproject.toml` yet; the commands above work
-on Astral defaults. Don't claim tests pass — there are none to run.
+`pyproject.toml` configures pytest, ruff (line-length 100, py313) and ty. All four checks run in
+CI on every push and PR (`.github/workflows/ci.yml`) — run them locally before opening a PR.
 
 The app requires a reachable **data source**, chosen at runtime in the Get Started sidebar and
 persisted in the `provider` session-state key (`"mlflow"` or `"wandb"`):
