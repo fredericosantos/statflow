@@ -7,7 +7,8 @@ aggregated trends over a numeric parameter (e.g. pop_size), not training curves.
 plots.py
 ├── main()                      # Main page entry point
 ├── _is_numeric_param()         # Check if ≥ 90% of non-null values cast to float
-├── _build_plot_group_label()   # group_label excluding the chosen x param
+├── _group_label_expr()         # `param=value, ...` concat expr (Parameters-page format)
+├── _build_plot_group_label()   # full label (run selection) + reduced label (per line)
 └── _render_line_plot()         # Plotly go.Scatter lines with optional IQR band
 """
 
@@ -23,6 +24,7 @@ from statflow.config import SessionState
 from statflow.functional.dataframes.data_processing import (
     apply_metric_filters,
     fetch_experiment_data,
+    grouping_params,
 )
 from statflow.functional.statistics import AGGREGATIONS, aggregate_for_plot
 from statflow.managers.naming import NamingManager
@@ -50,24 +52,36 @@ def _is_numeric_param(series: pl.Series, threshold: float = 0.9) -> bool:
     return len(clean) / len(non_null) >= threshold
 
 
+def _group_label_expr(params: list[str]) -> pl.Expr:
+    """`param=value, param2=value2` over `params` (matches the Parameters page)."""
+    exprs: list[pl.Expr] = []
+    for i, p in enumerate(params):
+        if i > 0:
+            exprs.append(pl.lit(", "))
+        exprs.append(pl.lit(f"{p}="))
+        exprs.append(pl.col(p).cast(pl.Utf8))
+    return pl.concat_str(exprs) if exprs else pl.lit("Default")
+
+
 def _build_plot_group_label(
     param_df: pl.DataFrame,
     selected_params: list[str],
     x_param: str,
 ) -> pl.DataFrame:
-    """Construct group_label from selected_params, excluding x_param."""
-    params_for_label = [p for p in selected_params if p != x_param and p in param_df.columns]
-    exprs = []
-    for i, p in enumerate(params_for_label):
-        if i > 0:
-            exprs.append(pl.lit(", "))
-        exprs.append(pl.lit(f"{p}="))
-        exprs.append(pl.col(p).cast(pl.Utf8))
+    """Add two label columns.
 
-    if exprs:
-        return param_df.with_columns(pl.concat_str(exprs).alias("group_label"))
-    else:
-        return param_df.with_columns(pl.lit("Default").alias("group_label"))
+    - ``_full_group_label``: every selected param, in selection order — identical to
+      the Parameters page's ``group_label``, so it can be matched against
+      ``selected_groups`` to keep only the runs the user picked.
+    - ``group_label``: the same minus ``x_param`` — the per-line grouping key, since
+      ``x_param`` varies *along* each line rather than between lines.
+    """
+    present = [p for p in selected_params if p in param_df.columns]
+    reduced = [p for p in present if p != x_param]
+    return param_df.with_columns(
+        _group_label_expr(present).alias("_full_group_label"),
+        _group_label_expr(reduced).alias("group_label"),
+    )
 
 
 def _render_line_plot(
@@ -216,9 +230,11 @@ def main() -> None:
         return
 
     # --- Identify numeric params ---
-    available_params: list[str] = st.session_state.get("selected_params", [])
+    # Group dimensions = selected params + selected tags. Tags are true/false, so
+    # they never qualify as the numeric X axis but do split the lines.
+    group_params = grouping_params()
     numeric_params = [
-        p for p in available_params if p in param_df.columns and _is_numeric_param(param_df[p])
+        p for p in group_params if p in param_df.columns and _is_numeric_param(param_df[p])
     ]
 
     if not numeric_params:
@@ -352,7 +368,7 @@ def main() -> None:
     # --- Build group labels (excluding x param) ---
     param_df_labeled = _build_plot_group_label(
         param_df,
-        selected_params=available_params,
+        selected_params=group_params,
         x_param=x_param,
     )
 
@@ -362,7 +378,7 @@ def main() -> None:
             param_df_labeled.select(
                 [
                     c
-                    for c in ["run_id", "group_label", "dataset_name", x_param]
+                    for c in ["run_id", "_full_group_label", "group_label", "dataset_name", x_param]
                     if c in param_df_labeled.columns
                 ]
             ),
@@ -374,7 +390,7 @@ def main() -> None:
             param_df_labeled.select(
                 [
                     c
-                    for c in ["dataset_name", "group_label", x_param]
+                    for c in ["dataset_name", "_full_group_label", "group_label", x_param]
                     if c in param_df_labeled.columns
                 ]
             ).unique(),
@@ -389,8 +405,9 @@ def main() -> None:
         st.error(f"Parameter '{x_param}' not found in joined data.")
         return
 
-    # Filter to selected groups
-    combined = combined.filter(pl.col("group_label").is_in(selected_groups))
+    # Keep only the runs the user picked on the Parameters page. Match on the FULL
+    # label (all params); the reduced `group_label` is only the per-line key.
+    combined = combined.filter(pl.col("_full_group_label").is_in(selected_groups))
 
     # Dataset scope filter
     if scope != "Aggregate across datasets":
