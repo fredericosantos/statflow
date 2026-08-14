@@ -113,6 +113,10 @@ class MLflowProvider(RunProvider):
         if not all_new_runs:
             return pl.DataFrame(), cursors
 
-        # `align` reconciles differing param/metric columns across experiments.
-        new_df = pl.concat(all_new_runs, how="align")
+        # Reconcile differing param/metric columns across experiments. Must not be
+        # `how="align"`: that full-outer-joins on the common columns, so a param
+        # that is null for all of one experiment's runs (Null dtype) cannot be a
+        # join key against a String one and raises SchemaError. Runs from different
+        # experiments are distinct rows to stack, never rows to align.
+        new_df = pl.concat(all_new_runs, how="diagonal_relaxed")
         return new_df, cursors
