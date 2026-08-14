@@ -114,12 +114,18 @@ class RunsCache:
                 st.session_state[cls.CACHE_KEY] = pl.DataFrame()
             return st.session_state[cls.CACHE_KEY]
 
-        # Merge with existing cache
+        # Merge with existing cache. Pages of runs stack vertically — dedup on
+        # run_id below is the only reconciliation needed — so this must not be
+        # `how="align"`, which full-outer-joins on the common columns and fails
+        # ("datatypes of join keys don't match") as soon as a page has a param
+        # that is null for all of its runs: that column comes back Null dtype
+        # and cannot be a join key against a String one. `diagonal_relaxed`
+        # unions the columns and resolves dtypes to a supertype instead.
         existing_df = st.session_state.get(cls.CACHE_KEY, pl.DataFrame())
         if existing_df.is_empty():
             combined_df = new_df
         else:
-            combined_df = pl.concat([existing_df, new_df], how="align")
+            combined_df = pl.concat([existing_df, new_df], how="diagonal_relaxed")
 
         # Deduplicate by run_id to avoid duplicates
         if RUN_ID_COL in combined_df.columns:

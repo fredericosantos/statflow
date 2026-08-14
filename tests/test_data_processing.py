@@ -281,6 +281,20 @@ def test_add_tag_columns_membership_and_nulls():
     assert out["tag:gpu"].to_list() == ["true", "true", "false"]
 
 
+def test_add_tag_columns_all_null_tags_column():
+    """An all-null `tags` column is Null dtype; the `.str` namespace rejects it.
+
+    Reachable when selected_tags persists in config but no loaded run has tags.
+    """
+    from statflow.functional.dataframes.data_processing import add_tag_columns
+
+    df = pl.DataFrame({"run_id": ["r1", "r2"], "tags": [None, None]})
+    assert df.schema["tags"] == pl.Null, "fixture must reproduce Null dtype"
+
+    out = add_tag_columns(df, ["baseline"])
+    assert out["tag:baseline"].to_list() == ["false", "false"]
+
+
 def test_add_tag_columns_noop_without_tags_column():
     from statflow.functional.dataframes.data_processing import add_tag_columns
 

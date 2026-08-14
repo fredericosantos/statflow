@@ -131,7 +131,9 @@ def add_tag_columns(df: pl.DataFrame, tags: list[str]) -> pl.DataFrame:
     if not tags or "tags" not in df.columns:
         return df
 
-    split = pl.col("tags").str.split(",")
+    # Cast first: when no loaded run has tags the column is Null dtype, and the
+    # `.str` namespace rejects it. Casting yields all-null -> all-false instead.
+    split = pl.col("tags").cast(pl.Utf8).str.split(",")
     exprs = [
         pl.when(split.list.contains(t).fill_null(False))
         .then(pl.lit("true"))

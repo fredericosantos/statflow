@@ -138,6 +138,69 @@ def test_load_runs_merges_new_rows(patched_cache, monkeypatch):
     assert set(cached.get_column(RUN_ID_COL).to_list()) == {"r1", "r2", "r3", "r4"}
 
 
+def _sequential_provider(monkeypatch, batches: list[pl.DataFrame]) -> None:
+    """Install a provider that returns `batches` in order, one per fetch."""
+    from statflow.loggers import runs_cache as rc_module
+
+    call_count = 0
+
+    class _SequentialProvider:
+        name = "sequential"
+
+        def fetch_runs(self, experiments, max_results, cursors=None):
+            nonlocal call_count
+            df = batches[min(call_count, len(batches) - 1)]
+            call_count += 1
+            return df, {"exp1": f"cursor_{call_count}"}
+
+    monkeypatch.setattr(rc_module, "get_provider", lambda name: _SequentialProvider())
+
+
+def test_load_more_runs_with_all_null_param_column(patched_cache, monkeypatch):
+    """A page where a param is null for every run must not break the merge.
+
+    Regression: merging used `pl.concat(how="align")`, which full-outer-joins on
+    the common columns. An all-null param column is Null dtype and cannot be a
+    join key against a String one, so this raised
+    "datatypes of join keys don't match - `params.optimizer_lr`: str ... null".
+    """
+    from statflow.loggers.runs_cache import RunsCache
+
+    page1 = pl.DataFrame({"run_id": ["r1"], "params.optimizer_lr": ["0.01"]})
+    page2 = pl.DataFrame({"run_id": ["r2"], "params.optimizer_lr": [None]})
+    assert page2.schema["params.optimizer_lr"] == pl.Null, "fixture must reproduce Null dtype"
+
+    _sequential_provider(monkeypatch, [page1, page2])
+
+    RunsCache.load_runs(["exp1"])
+    RunsCache.load_more_runs(["exp1"])
+
+    cached = RunsCache.get_runs()
+    assert set(cached.get_column(RUN_ID_COL).to_list()) == {"r1", "r2"}
+    assert cached.schema["params.optimizer_lr"] == pl.String
+    lookup = dict(zip(cached["run_id"], cached["params.optimizer_lr"], strict=True))
+    assert lookup == {"r1": "0.01", "r2": None}
+
+
+def test_load_more_runs_with_disjoint_columns(patched_cache, monkeypatch):
+    """Columns present in only one page survive the merge, filled with null."""
+    from statflow.loggers.runs_cache import RunsCache
+
+    page1 = pl.DataFrame({"run_id": ["r1"], "params.a": ["x"], "metrics.loss": [1.0]})
+    page2 = pl.DataFrame({"run_id": ["r2"], "params.b": ["y"], "metrics.loss": [2.0]})
+    _sequential_provider(monkeypatch, [page1, page2])
+
+    RunsCache.load_runs(["exp1"])
+    RunsCache.load_more_runs(["exp1"])
+
+    cached = RunsCache.get_runs().sort("run_id")
+    assert len(cached) == 2
+    assert {"params.a", "params.b", "metrics.loss"} <= set(cached.columns)
+    assert cached["params.a"].to_list() == ["x", None]
+    assert cached["params.b"].to_list() == [None, "y"]
+    assert cached["metrics.loss"].to_list() == [1.0, 2.0]
+
+
 def test_clear_cache(patched_cache, monkeypatch):
     df = _make_runs(["r1"])
     _install_fake_provider(monkeypatch, df)
