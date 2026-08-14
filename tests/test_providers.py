@@ -124,6 +124,67 @@ def test_mlflow_provider_cursors_updated(monkeypatch):
     assert isinstance(cursors["my_exp"], int), "MLflow cursor should be an int (ms timestamp)"
 
 
+def test_mlflow_provider_concat_across_experiments_with_null_param(monkeypatch):
+    """A param missing from all of one experiment's runs must not break the merge.
+
+    Regression: frames were combined with `pl.concat(how="align")`, which
+    full-outer-joins on the common columns, making every shared column a join key.
+    pandas represents a wholly-absent param as NaN, so `pl.from_pandas` types that
+    column Float64 while the other experiment's is String — and polars refuses to
+    join across the two, raising SchemaError.
+    """
+    import streamlit as st
+
+    fake_state = _FakeSessionState(mlflow_server_url="http://fake:5000", provider="mlflow")
+    monkeypatch.setattr(st, "session_state", fake_state)
+
+    import mlflow
+
+    frames = {
+        "1": pd.DataFrame(
+            {
+                "run_id": ["run_a"],
+                "start_time": [pd.Timestamp("2024-01-01 10:00:00")],
+                "params.lr": ["0.01"],
+                "params.only_in_exp1": ["x"],
+                "metrics.rmse": [0.12],
+            }
+        ),
+        # No run here logged `lr`; pandas fills the column with NaN, which
+        # pl.from_pandas types Float64 — the dtype clash that broke the join.
+        "2": pd.DataFrame(
+            {
+                "run_id": ["run_b"],
+                "start_time": [pd.Timestamp("2024-01-02 11:00:00")],
+                "params.lr": [float("nan")],
+                "metrics.rmse": [0.09],
+            }
+        ),
+    }
+
+    class _Exp:
+        def __init__(self, exp_id: str):
+            self.experiment_id = exp_id
+
+    monkeypatch.setattr(mlflow, "set_tracking_uri", lambda uri: None)
+    monkeypatch.setattr(
+        mlflow, "get_experiment_by_name", lambda name: _Exp("1" if name == "exp1" else "2")
+    )
+    monkeypatch.setattr(mlflow, "search_runs", lambda **kw: frames[kw["experiment_ids"][0]].copy())
+
+    from statflow.loggers.mlflow.provider import MLflowProvider
+
+    df, _cursors = MLflowProvider().fetch_runs(["exp1", "exp2"], max_results=100)
+
+    assert set(df.get_column(RUN_ID_COL).to_list()) == {"run_a", "run_b"}
+    assert df.schema["params.lr"] == pl.String
+    lookup = dict(zip(df["run_id"], df["params.lr"], strict=True))
+    assert lookup == {"run_a": "0.01", "run_b": None}
+    # A param unique to one experiment survives, filled null for the other.
+    only = dict(zip(df["run_id"], df["params.only_in_exp1"], strict=True))
+    assert only == {"run_a": "x", "run_b": None}
+
+
 def test_mlflow_provider_empty_experiment(monkeypatch):
     """fetch_runs with an empty experiment returns (empty df, cursors)."""
     import streamlit as st
